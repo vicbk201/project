@@ -1,0 +1,3 @@
+/home/semilux/octreevoxelgrid/build/CMakeFiles/app.dir
+/home/semilux/octreevoxelgrid/build/CMakeFiles/edit_cache.dir
+/home/semilux/octreevoxelgrid/build/CMakeFiles/rebuild_cache.dir
