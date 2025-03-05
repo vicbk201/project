@@ -1,9 +1,7 @@
-
 #include "PointCloudViewer.h"
 #include <pcl/visualization/pcl_visualizer.h>
 #include <iostream>
 #include <sstream>
-
 
 void PointCloudViewer::displayProcessedCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr processedCloud, float resolution)
 {
@@ -12,7 +10,7 @@ void PointCloudViewer::displayProcessedCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr
         return;
     }
 
-     // 禁用 VTK 警告
+    // 禁用 VTK 警告
     vtkObject::GlobalWarningDisplayOff();
 
     // 將 processedCloud 轉換為帶顏色的點雲 (固定綠色)
@@ -28,11 +26,12 @@ void PointCloudViewer::displayProcessedCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr
         cloudRGB->push_back(pt_rgb);
     }
 
+
     // 建立 PCL 可視化器
     pcl::visualization::PCLVisualizer::Ptr viewer(new pcl::visualization::PCLVisualizer("Processed Point Cloud"));
     viewer->setBackgroundColor(0, 0, 0);
 
-    // 使用 RGB 處理器顯示點雲
+    // 使用 RGB 處理器顯示點雲（這裡使用翻轉後的點雲）
     pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgbHandler(cloudRGB);
     viewer->addPointCloud<pcl::PointXYZRGB>(cloudRGB, rgbHandler, "processed_cloud");
 
@@ -47,5 +46,4 @@ void PointCloudViewer::displayProcessedCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr
     viewer->addText(ss.str(), 10, 10, "info_text", 0);
 
     viewer->spin();
-
 }

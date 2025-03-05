@@ -1,3 +1,4 @@
+
 #include <iostream>
 #include "ArgumentParser.h"
 #include "PCDLoader.h"
@@ -11,7 +12,7 @@ int main(int argc, char** argv)
     float resolution;
     std::string method;
 
-    // 解析命令列參數，如果解析失敗則退出
+    // 解析命令列參數，若解析失敗則退出
     if (!ArgumentParser::parseArguments(argc, argv, cloudFile, resolution, method)) {
         std::cerr << "正確使用方式: " << argv[0] << " --cloudfile <PCD檔案路徑> --method <octree|voxelgrid> [--resolution <解析度>]" << std::endl;
         return -1;
@@ -31,12 +32,16 @@ int main(int argc, char** argv)
     pcl::PointCloud<pcl::PointXYZ>::Ptr processedCloud;
     if (method == "voxelgrid") {
         processedCloud = VoxelGridProcessor::processVoxelGrid(cloud, resolution);
-    } else {  
+    } else {
         processedCloud = OctreeProcessor::processOctree(cloud, resolution);
     }
-    std::cout << "降維處理後點雲數量: " << processedCloud->size() << std::endl;
+    std::cout << "降採樣後點雲數量: " << processedCloud->size() << std::endl;
     
-    PointCloudViewer::displayProcessedCloud(processedCloud, resolution);
+    try {
+        PointCloudViewer::displayProcessedCloud(processedCloud, resolution);
+    } catch(const std::exception &e) {
+        std::cerr << "顯示點雲時發生錯誤: " << e.what() << std::endl;
+    }
 
     return 0;
 }
