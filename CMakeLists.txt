@@ -1,8 +1,8 @@
 cmake_minimum_required(VERSION 3.10)
 project(octreevoxelgrid)
 
-find_package(PCL 1.8 REQUIRED)
-find_package(VTK 8.2 REQUIRED)
+find_package(PCL 1.14 REQUIRED)
+find_package(VTK 9.1 REQUIRED)
 
 include_directories(${PCL_INCLUDE_DIRS})
 include_directories(${VTK_INCLUDE_DIRS})
@@ -28,4 +28,5 @@ target_link_libraries(app ${PCL_LIBRARIES} ${VTK_LIBRARIES})
 vtk_module_autoinit(TARGETS app MODULES VTK::RenderingContextOpenGL2)
 
 message("Project: ${PROJECT_NAME} compiled with CMake ${CMAKE_VERSION}")
+
 
