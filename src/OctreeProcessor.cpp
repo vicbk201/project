@@ -17,15 +17,16 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
     // 根據邊界最大尺寸計算最大層次 (maxDepth)，使最終解析度接近參數 resolution
     float maxDim = (maxPt - minPt).head<3>().maxCoeff();
     int maxDepth = static_cast<int>(std::ceil(std::log2(maxDim / resolution)));
-
+    
     // 先印出計算的 maxDepth
     std::cout << "[OctreeProcessor] Calculated maxDepth = " << maxDepth << std::endl;
 
     // 記錄每層節點數量的容器 (0 ~ maxDepth 共 maxDepth+1 層)
     std::vector<int> nodeCountByLevel(maxDepth + 1, 0);
-
+    
     // 可調整的密度閾值，決定節點中若超過多少點才繼續細分
-    int densityThreshold = 50;
+    int densityThreshold = 5;
+    std::cout << "[OctreeProcessor] Density threshold = " << densityThreshold << std::endl;
 
     // 定義一個節點結構，表示八叉樹中的一個區域
     struct Node {

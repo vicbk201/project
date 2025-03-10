@@ -3,12 +3,14 @@
 #include <stdexcept>
 #include <cctype>
 
-bool ArgumentParser::parseArguments(int argc, char** argv, std::string& cloudFile, float& resolution, std::string& method)
+bool ArgumentParser::parseArguments(int argc, char** argv, std::string& cloudFile, float& resolution, std::string& method, std::string& outputCloudFile)
 {
     // 設定預設解析度
     resolution = 0.2f;
     // 清空 method，要求使用者必須輸入
     method = "";
+    // 預設 outputCloudFile 為空字串（表示不儲存輸出點雲）
+    outputCloudFile = "";
 
     // 從 argv[1] 開始解析參數
     for (int i = 1; i < argc; i++) {
@@ -48,6 +50,13 @@ bool ArgumentParser::parseArguments(int argc, char** argv, std::string& cloudFil
                 }
             } else {
                 std::cerr << "Error: " << arg << " 需要一個數值" << std::endl;
+                return false;
+            }
+        } else if (arg == "--o" || arg == "--output") {
+            if (i + 1 < argc) {
+                outputCloudFile = argv[++i];
+            } else {
+                std::cerr << "Error: " << arg << " 需要一個完整的檔案路徑（含檔名與副檔名）" << std::endl;
                 return false;
             }
         } else {

@@ -3,8 +3,6 @@
 #include <pcl/visualization/pcl_visualizer.h>
 #include <iostream>
 #include <sstream>
-#include <thread>  // for sleep_for
-
 void PointCloudViewer::displayProcessedCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr processedCloud, float resolution)
 {
     if (!processedCloud || processedCloud->empty()) {
