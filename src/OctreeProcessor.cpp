@@ -6,10 +6,17 @@
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <iomanip>
+#include <pcl/console/time.h>
+#include <numeric>
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
-    const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, float resolution)
+OctreeResult OctreeProcessor::processOctree(
+    const pcl::PointCloud<pcl::PointXYZI>::Ptr &cloud, float resolution)
 {
+    // 開始計時
+    pcl::console::TicToc tt;
+    tt.tic();
+
     // 計算點雲邊界
     Eigen::Vector4f minPt, maxPt;
     pcl::getMinMax3D(*cloud, minPt, maxPt);
@@ -18,7 +25,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
     float maxDim = (maxPt - minPt).head<3>().maxCoeff();
     int maxDepth = static_cast<int>(std::ceil(std::log2(maxDim / resolution)));
     
-    // 先印出計算的 maxDepth
     std::cout << "[OctreeProcessor] Calculated maxDepth = " << maxDepth << std::endl;
 
     // 記錄每層節點數量的容器 (0 ~ maxDepth 共 maxDepth+1 層)
@@ -35,7 +41,7 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
         int level;                  // 當前層次
         std::vector<Node*> children; 
         Eigen::Vector3f centroid;   // 區域質心
-        bool isLeaf;               // 是否為葉節點
+        bool isLeaf;                // 是否為葉節點
 
         Node(const Eigen::Vector4f& min_b, const Eigen::Vector4f& max_b, int lvl)
             : min_bound(min_b), max_bound(max_b), level(lvl), isLeaf(true)
@@ -107,16 +113,17 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
     Node* root = buildTree(allIndices, minPt, maxPt, 0);
 
     // 建立最終下採樣後的點雲
-    pcl::PointCloud<pcl::PointXYZ>::Ptr downsampledCloud(new pcl::PointCloud<pcl::PointXYZ>);
+    pcl::PointCloud<pcl::PointXYZI>::Ptr downsampledCloud(new pcl::PointCloud<pcl::PointXYZI>);
 
     // 遞歸遍歷八叉樹，蒐集代表點
     std::function<void(Node*)> traverseTree = [&](Node* node) {
         if (!node) return;
         if (node->isLeaf || node->indices.size() <= static_cast<size_t>(densityThreshold)) {
-            pcl::PointXYZ pt;
+            pcl::PointXYZI pt;
             pt.x = node->centroid[0];
             pt.y = node->centroid[1];
             pt.z = node->centroid[2];
+            pt.intensity = 0.0f;
             downsampledCloud->points.push_back(pt);
         } else {
             for (Node* child : node->children) {
@@ -125,12 +132,6 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
         }
     };
     traverseTree(root);
-
-    // 統計完成後，印出每個層級的節點數
-    for (int d = 0; d <= maxDepth; d++) {
-        std::cout << "[OctreeProcessor] Level " << d 
-                  << " node count: " << nodeCountByLevel[d] << std::endl;
-    }
 
     // 設定點雲維度
     downsampledCloud->width  = static_cast<uint32_t>(downsampledCloud->points.size());
@@ -147,5 +148,11 @@ pcl::PointCloud<pcl::PointXYZ>::Ptr OctreeProcessor::processOctree(
     };
     deleteTree(root);
 
-    return downsampledCloud;
+    // 取得耗時
+    double elapsed = tt.toc();
+    
+    OctreeResult result;
+    result.cloud = downsampledCloud;
+    result.runtime_ms = elapsed;
+    return result;
 }

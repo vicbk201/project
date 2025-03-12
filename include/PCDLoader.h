@@ -1,5 +1,5 @@
-#ifndef PCD_LOADER_H
-#define PCD_LOADER_H
+#ifndef PCDLOADER_H
+#define PCDLOADER_H
 
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
@@ -7,7 +7,8 @@
 
 class PCDLoader {
 public:
-    static pcl::PointCloud<pcl::PointXYZ>::Ptr loadPCD(const std::string &filename);
+    // 載入點雲時使用 PointXYZI 型態
+    static pcl::PointCloud<pcl::PointXYZI>::Ptr loadPCD(const std::string &filename);
 };
 
-#endif // PCD_LOADER_H
+#endif // PCDLOADER_H

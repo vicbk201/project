@@ -4,9 +4,14 @@
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 
+struct VoxelGridResult {
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
+    double runtime_ms;
+};
+
 class VoxelGridProcessor {
 public:
-    static pcl::PointCloud<pcl::PointXYZ>::Ptr processVoxelGrid(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float resolution);
+    static VoxelGridResult processVoxelGrid(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, float resolution);
 };
 
 #endif // VOXEL_GRID_PROCESSOR_H

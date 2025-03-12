@@ -1,12 +1,24 @@
 #include "VoxelGridProcessor.h"
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/console/time.h>
+#include <iostream>
+#include <iomanip>
 
-pcl::PointCloud<pcl::PointXYZ>::Ptr VoxelGridProcessor::processVoxelGrid(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud, float resolution)
+VoxelGridResult VoxelGridProcessor::processVoxelGrid(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud, float resolution)
 {
-    pcl::PointCloud<pcl::PointXYZ>::Ptr filteredCloud(new pcl::PointCloud<pcl::PointXYZ>);
-    pcl::VoxelGrid<pcl::PointXYZ> vg;
+    pcl::console::TicToc tt;
+    tt.tic();
+
+    pcl::PointCloud<pcl::PointXYZI>::Ptr filteredCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    pcl::VoxelGrid<pcl::PointXYZI> vg;
     vg.setInputCloud(cloud);
     vg.setLeafSize(resolution, resolution, resolution);
     vg.filter(*filteredCloud);
-    return filteredCloud;
+
+    double elapsed = tt.toc();
+    
+    VoxelGridResult result;
+    result.cloud = filteredCloud;
+    result.runtime_ms = elapsed;
+    return result;
 }
