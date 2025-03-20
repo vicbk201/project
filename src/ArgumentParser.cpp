@@ -3,13 +3,19 @@
 #include <stdexcept>
 #include <cctype>
 
-bool ArgumentParser::parseArguments(int argc, char** argv, std::string& cloudFile, float& resolution, std::string& method, std::string& outputCloudFile)
+bool ArgumentParser::parseArguments(int argc, char** argv,
+                                    std::string& cloudFile,
+                                    float& resolution,
+                                    std::string& downsampleMethod,
+                                    std::string& clusterMethod,
+                                    std::string& outputCloudFile)
 {
-    // 設定預設解析度
+    // 預設解析度
     resolution = 0.2f;
-    // 清空 method，要求使用者必須輸入
-    method = "";
-    // 預設 outputCloudFile 為空字串（表示不儲存輸出點雲）
+    // 清空方法參數
+    downsampleMethod = "";
+    clusterMethod = "";
+    // 預設 outputCloudFile 為空，表示不儲存結果
     outputCloudFile = "";
 
     // 從 argv[1] 開始解析參數
@@ -24,17 +30,31 @@ bool ArgumentParser::parseArguments(int argc, char** argv, std::string& cloudFil
             }
         } else if (arg == "--method") {
             if (i + 1 < argc) {
-                method = argv[++i];
+                downsampleMethod = argv[++i];
                 // 轉為小寫
-                for (auto &c : method) {
+                for (auto &c : downsampleMethod) {
                     c = std::tolower(c);
                 }
-                if (method != "octree" && method != "voxelgrid") {
+                if (downsampleMethod != "octree" && downsampleMethod != "voxelgrid") {
                     std::cerr << "Error: --method 必須是 'octree' 或 'voxelgrid'" << std::endl;
                     return false;
                 }
             } else {
                 std::cerr << "Error: --method 需要一個值 (octree 或 voxelgrid)" << std::endl;
+                return false;
+            }
+        } else if (arg == "--cluster") {
+            if (i + 1 < argc) {
+                clusterMethod = argv[++i];
+                for (auto &c : clusterMethod) {
+                    c = std::tolower(c);
+                }
+                if (clusterMethod != "euclidean" && clusterMethod != "dbscan") {
+                    std::cerr << "Error: --cluster 必須是 'euclidean' 或 'dbscan'" << std::endl;
+                    return false;
+                }
+            } else {
+                std::cerr << "Error: --cluster 需要一個值 (euclidean 或 dbscan)" << std::endl;
                 return false;
             }
         } else if (arg == "--resolution" || arg == "--r") {
@@ -64,13 +84,17 @@ bool ArgumentParser::parseArguments(int argc, char** argv, std::string& cloudFil
         }
     }
 
-    // 檢查必要的參數是否提供
+    // 檢查必要參數
     if (cloudFile.empty()) {
         std::cerr << "Error: 必須提供 --cloudfile <PCD檔案路徑>" << std::endl;
         return false;
     }
-    if (method.empty()) {
+    if (downsampleMethod.empty()) {
         std::cerr << "Error: 必須提供 --method <octree|voxelgrid>" << std::endl;
+        return false;
+    }
+    if (clusterMethod.empty()) {
+        std::cerr << "Error: 必須提供 --cluster <euclidean|dbscan>" << std::endl;
         return false;
     }
 

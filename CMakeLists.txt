@@ -22,7 +22,8 @@ add_executable(app
     src/VoxelGridProcessor.cpp
     src/PointCloudViewer.cpp
     src/GroundRemovalProcessor.cpp  
-    src/ConditionalClusteringProcessor.cpp
+    src/EuclideanClusterProcessor.cpp   
+    src/DBSCANClusteringProcessor.cpp   
 )
 
 target_link_libraries(app ${PCL_LIBRARIES} ${VTK_LIBRARIES})

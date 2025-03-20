@@ -1,13 +1,12 @@
-#ifndef POINT_CLOUD_VIEWER_H
-#define POINT_CLOUD_VIEWER_H
+#ifndef POINTCLOUDVIEWER_H
+#define POINTCLOUDVIEWER_H
 
-#include <pcl/point_cloud.h>
-#include <pcl/point_types.h>
+#include <pcl/visualization/pcl_visualizer.h>
+#include "OBBFittingProcessor.h"  
 
 class PointCloudViewer {
 public:
-    static void displayProcessedCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, float resolution);
-
+    static void displayProcessedCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, float resolution, const std::vector<OrientedBoundingBox>& obb_list);
 };
 
-#endif // POINT_CLOUD_VIEWER_H
+#endif // POINTCLOUDVIEWER_H
