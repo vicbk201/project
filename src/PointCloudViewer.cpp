@@ -24,6 +24,20 @@ void PointCloudViewer::displayProcessedCloud(
     // 使用 intensity 欄位作為顏色處理器
     pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_handler(processedCloud, "intensity");
     viewer->addPointCloud<pcl::PointXYZI>(processedCloud, intensity_handler, "processed_cloud");
+    
+     // 加入每個 OBB 的視覺化
+    for (size_t i = 0; i < obb_list.size(); i++) {
+        const auto &obb = obb_list[i];
+        std::stringstream ss;
+        ss << "bbox_" << i;
+        // 在視窗中新增包圍盒
+        viewer->addCube(obb.center, obb.orientation, 
+                        obb.dimensions.x(), obb.dimensions.y(), obb.dimensions.z(), ss.str());
+        viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_REPRESENTATION,
+                                              pcl::visualization::PCL_VISUALIZER_REPRESENTATION_WIREFRAME, ss.str());
+        viewer->setShapeRenderingProperties(pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 1.0, 1.0, ss.str());
+    }
+
 
     // 顯示畫面
     viewer->addCoordinateSystem(1.0);

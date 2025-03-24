@@ -10,9 +10,15 @@
 #include "OBBFittingProcessor.h"
 #include "PointCloudViewer.h"
 #include <iomanip>
+#include "OBBFittingProcessor.h"
+#include <map>
+#include <vector>
+#include <pcl/console/print.h>
 
 int main(int argc, char **argv)
 {
+    pcl::console::setVerbosityLevel(pcl::console::L_ERROR);
+
     std::string cloudFile;
     float resolution;
     std::string downsampleMethod;
@@ -41,6 +47,7 @@ int main(int argc, char **argv)
         return -1;
     }
     std::cout << "原始點雲數量: " << cloud->size() << std::endl;
+    
 
     // 選擇下採樣方法
     pcl::PointCloud<pcl::PointXYZI>::Ptr downsampledCloud;
@@ -78,9 +85,10 @@ int main(int argc, char **argv)
         std::cout << "Euclidean Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
+    }    
     else if (clusterMethod == "dbscan")
     {
-        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 1, 20); // eps, minPts
+        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 1, 25); // eps, minPts
         std::cout << "DBSCAN Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
@@ -90,6 +98,58 @@ int main(int argc, char **argv)
         std::cerr << "Error: 未知的 clustering method: " << clusterMethod << std::endl;
         return -1;
     }
+    
+    // 假設 clusteredCloud 為聚類後的點雲（來自 Euclidean 或 DBSCAN 處理器）
+    std::map<int, pcl::PointCloud<pcl::PointXYZI>::Ptr> clusterMap;
+    for (const auto &pt : clusteredCloud->points)
+    {
+        int label = static_cast<int>(pt.intensity);
+        if (label == -2)  // 噪點略過
+        continue;
+    if (clusterMap.find(label) == clusterMap.end())
+    {
+        clusterMap[label] = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+    }
+    clusterMap[label]->points.push_back(pt);
+    }
+
+    std::cout << "Total clusters: " << clusterMap.size() << std::endl;
+    
+    // 計算每個聚類的 OBB 並根據尺寸過濾只保留人和車
+    std::vector<OrientedBoundingBox> validOBB;
+    int validCount = 0;
+    for (const auto &cluster : clusterMap)
+    {
+        int clusterLabel = cluster.first;
+        OrientedBoundingBox obb = OBBFittingProcessor::computeOBB(cluster.second);
+        validOBB.push_back(obb);
+    }    
+
+    /*    
+        // 定義尺寸：
+        float length = obb.dimensions.x(); // X 軸範圍
+        float width  = obb.dimensions.y(); // Y 軸範圍
+        float height = obb.dimensions.z(); // Z 軸範圍
+
+        std::cout << "Cluster " << clusterLabel << " dimensions (length, width, height): " 
+                  << length << ", " << width << ", " << height << std::endl;
+
+        //篩選條件：
+        bool isHuman = (height >= 1.3f && height <= 2.2f && length <= 1.2f && width <= 1.2f);
+        bool isCar = (height >= 1.2f && height <= 2.2f && length >= 3.0f && length <= 7.0f && width  >= 1.2f && width  <= 3.0f);
+
+        if (isHuman || isCar)
+        {
+        validOBB.push_back(obb);
+        validCount++;
+        }
+    }
+    std::cout << "Valid clusters (people or vehicles): " << validCount << std::endl;
+    */
+
+    clusteredCloud->width = static_cast<int>(clusteredCloud->points.size());
+    clusteredCloud->height = 1;
+    clusteredCloud->is_dense = true;
 
     // 儲存處理後的點雲
     if (!outputCloudFile.empty())
@@ -102,10 +162,9 @@ int main(int argc, char **argv)
         }
     }
 
-    // 呼叫的 displayProcessedCloud 函式
-    try
-    {
-        PointCloudViewer::displayProcessedCloud(clusteredCloud, resolution,);
+    // 呼叫視覺化函式，同時顯示聚類點雲與計算好的 OBB
+    try {
+        PointCloudViewer::displayProcessedCloud(clusteredCloud, resolution,validOBB);
     }
     catch (const std::exception &e)
     {

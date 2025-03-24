@@ -88,13 +88,12 @@ DBSCANResult DBSCANClusteringProcessor::clusterCloud(
     }
 
     // 將聚類結果寫回 intensity 欄位：
-    // 噪點設定為 -2
+    // 噪點設定為 -2，其餘直接使用對應的聚類編號
     for (size_t i = 0; i < numPoints; i++) {
         if (labels[i] == -1)
             cloud->points[i].intensity = -2;  // 噪點
         else
-            cloud->points[i].intensity = labels[i]%8;
-
+            cloud->points[i].intensity = static_cast<float>(labels[i]);
     }
 
 

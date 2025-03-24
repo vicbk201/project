@@ -55,24 +55,28 @@ EuclideanClusteringResult EuclideanClusterProcessor::clusterCloud(
     cec.setInputCloud(cloud_with_normals);
     cec.setConditionFunction(&customRegionGrowing);
     cec.setClusterTolerance(clusterTolerance);
-    cec.setMinClusterSize(cloud_with_normals->size() / 1000);
-    cec.setMaxClusterSize(cloud_with_normals->size() / 5);
+    cec.setMinClusterSize(50);
+    cec.setMaxClusterSize(10000);
     cec.segment(*clusters);
     cec.getRemovedClusters(small_clusters, large_clusters);
 
-    // 3. 使用 intensity 欄位進行視覺化：過小的叢集標記為 -2，過大的叢集標記為 +10，其餘群集以 0~7 隨機標示
+    // 3. 使用 intensity 欄位進行視覺化：過小的叢集標記為 -2，過大的叢集標記為 +10，
     for (const auto& small_cluster : (*small_clusters))
         for (const auto& j : small_cluster.indices)
             (*cloud)[j].intensity = -2.0;
     for (const auto& large_cluster : (*large_clusters))
         for (const auto& j : large_cluster.indices)
             (*cloud)[j].intensity = +10.0;
+    
+    int label = 0;
     for (const auto& cluster : (*clusters))
     {
-        int label = rand() % 20;
-        for (const auto& j : cluster.indices)
-            (*cloud)[j].intensity = label;
+    // 為每個聚類分配一個唯一的標籤
+    for (const auto& j : cluster.indices)
+         (*cloud)[j].intensity = label;
+    label++;
     }
+
     
     double elapsed = tt.toc();
     

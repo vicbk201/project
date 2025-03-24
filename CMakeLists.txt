@@ -23,7 +23,9 @@ add_executable(app
     src/PointCloudViewer.cpp
     src/GroundRemovalProcessor.cpp  
     src/EuclideanClusterProcessor.cpp   
-    src/DBSCANClusteringProcessor.cpp   
+    src/DBSCANClusteringProcessor.cpp
+    src/OBBFittingProcessor.cpp
+     
 )
 
 target_link_libraries(app ${PCL_LIBRARIES} ${VTK_LIBRARIES})
