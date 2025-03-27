@@ -88,7 +88,7 @@ int main(int argc, char **argv)
     }    
     else if (clusterMethod == "dbscan")
     {
-        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 1, 25); // eps, minPts
+        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 0.7,7); // eps, minPts
         std::cout << "DBSCAN Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
@@ -121,11 +121,11 @@ int main(int argc, char **argv)
     for (const auto &cluster : clusterMap)
     {
         int clusterLabel = cluster.first;
-        OrientedBoundingBox obb = OBBFittingProcessor::computeOBB(cluster.second);
+        OrientedBoundingBox obb = OBBFittingProcessor::computeOBB(cluster.second);   
         validOBB.push_back(obb);
-    }    
+    }
 
-    /*    
+    /*   
         // 定義尺寸：
         float length = obb.dimensions.x(); // X 軸範圍
         float width  = obb.dimensions.y(); // Y 軸範圍
@@ -135,7 +135,7 @@ int main(int argc, char **argv)
                   << length << ", " << width << ", " << height << std::endl;
 
         //篩選條件：
-        bool isHuman = (height >= 1.3f && height <= 2.2f && length <= 1.2f && width <= 1.2f);
+        bool isHuman = (height >= 0.8f && height <= 2.2f && length <= 1.2f && width <= 1.2f);
         bool isCar = (height >= 1.2f && height <= 2.2f && length >= 3.0f && length <= 7.0f && width  >= 1.2f && width  <= 3.0f);
 
         if (isHuman || isCar)
@@ -147,7 +147,7 @@ int main(int argc, char **argv)
     std::cout << "Valid clusters (people or vehicles): " << validCount << std::endl;
     */
 
-    clusteredCloud->width = static_cast<int>(clusteredCloud->points.size());
+    clusteredCloud->width = static_cast<uint32_t>(clusteredCloud->points.size());
     clusteredCloud->height = 1;
     clusteredCloud->is_dense = true;
 
