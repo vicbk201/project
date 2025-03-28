@@ -23,7 +23,7 @@ GroundRemovalResult GroundRemovalProcessor::removeGround(
     seg.setOptimizeCoefficients(true);
     seg.setModelType(pcl::SACMODEL_PLANE);
     seg.setMethodType(pcl::SAC_RANSAC);
-    seg.setDistanceThreshold(0.2); // 根據點雲密度與感測器噪聲調整
+    seg.setDistanceThreshold(0.3); // 根據點雲密度與感測器噪聲調整
 
     int max_iterations = 3;
     const int min_inliers_threshold = 100;

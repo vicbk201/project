@@ -124,19 +124,18 @@ int main(int argc, char **argv)
         OrientedBoundingBox obb = OBBFittingProcessor::computeOBB(cluster.second);   
         validOBB.push_back(obb);
     }
-
-    /*   
-        // 定義尺寸：
-        float length = obb.dimensions.x(); // X 軸範圍
-        float width  = obb.dimensions.y(); // Y 軸範圍
-        float height = obb.dimensions.z(); // Z 軸範圍
+    /* 
+        // 直接取對齊後的尺寸
+        float length = std::fabs(obb.dimensions.x());  // x 為長度
+        float width  = std::fabs(obb.dimensions.y());  // y 為寬度
+        float height = std::fabs(obb.dimensions.z());  // z 為高度
 
         std::cout << "Cluster " << clusterLabel << " dimensions (length, width, height): " 
                   << length << ", " << width << ", " << height << std::endl;
 
-        //篩選條件：
+        // 篩選條件（根據您的應用調整閾值）
         bool isHuman = (height >= 0.8f && height <= 2.2f && length <= 1.2f && width <= 1.2f);
-        bool isCar = (height >= 1.2f && height <= 2.2f && length >= 3.0f && length <= 7.0f && width  >= 1.2f && width  <= 3.0f);
+        bool isCar   = (height >= 1.2f && height <= 2.2f && length >= 3.0f && length <= 7.0f && width >= 1.2f && width <= 3.0f);
 
         if (isHuman || isCar)
         {
@@ -144,8 +143,9 @@ int main(int argc, char **argv)
         validCount++;
         }
     }
-    std::cout << "Valid clusters (people or vehicles): " << validCount << std::endl;
     */
+   
+    std::cout << "Valid clusters (people or vehicles): " << validCount << std::endl;
 
     clusteredCloud->width = static_cast<uint32_t>(clusteredCloud->points.size());
     clusteredCloud->height = 1;
