@@ -1,112 +1,118 @@
+
 #include "OBBFittingProcessor.h"
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
 #include <pcl/common/centroid.h>
 #include <pcl/common/eigen.h>
 #include <iostream>
-#include <numeric>
+#include <cmath>
 
-OrientedBoundingBox OBBFittingProcessor::computeOBB(const pcl::PointCloud<PointType>::Ptr &cloud_cluster)
+// 計算物體的有向包圍盒 (OBB)，可選擇性使用地面法向量校正點雲方向
+OrientedBoundingBox OBBFittingProcessor::computeOBB(const pcl::PointCloud<PointType>::Ptr &cloud_cluster, const Eigen::Vector4f* ground_coeff_ptr)
 {
     OrientedBoundingBox obb;
     if (cloud_cluster->empty())
     {
-        std::cerr << "錯誤: 輸入點雲為空！" << std::endl;
+        std::cerr << "錯誤：輸入點雲為空！" << std::endl;
         return obb;
     }
+
+    pcl::PointCloud<PointType>::Ptr cloud_aligned(new pcl::PointCloud<PointType>(*cloud_cluster));
+    Eigen::Affine3f ground_correction = Eigen::Affine3f::Identity();
+
+    if (ground_coeff_ptr)
+    {
+        Eigen::Vector3f ground_normal = ground_coeff_ptr->head<3>();
+        if (ground_normal.norm() > 1e-6)
+        {
+            if (ground_normal.dot(Eigen::Vector3f::UnitZ()) < 0)
+                ground_normal = -ground_normal;
+            ground_normal.normalize();
+
+            Eigen::Vector3f zAxis = Eigen::Vector3f::UnitZ();
+            float angle = std::acos(ground_normal.dot(zAxis));
+            Eigen::Vector3f axis = ground_normal.cross(zAxis);
+            if (axis.norm() < 1e-6)
+            {
+                axis = Eigen::Vector3f::UnitX();
+                angle = 0.0f;
+            }
+            else
+            {
+                axis.normalize();
+            }
+            ground_correction.rotate(Eigen::AngleAxisf(angle, axis));
+            pcl::transformPointCloud(*cloud_cluster, *cloud_aligned, ground_correction);
+        }
+    }
     
-    // 1. 計算原始重心
+    // 1. 計算點雲的幾何重心與中心
+    // 重心：所有點的平均值 (用於計算協方差矩陣)
     Eigen::Vector4f centroid;
-    pcl::compute3DCentroid(*cloud_cluster, centroid);
+    pcl::compute3DCentroid(*cloud_aligned, centroid);
     
-    // 2. 計算每個點與重心的距離
-    std::vector<float> distances;
-    distances.reserve(cloud_cluster->points.size());
-    for (const auto &pt : cloud_cluster->points)
-    {
-        float d = (pt.getVector3fMap() - centroid.head<3>()).norm();
-        distances.push_back(d);
-    }
-    
-    // 3. 計算平均值與標準差
-    float sum = std::accumulate(distances.begin(), distances.end(), 0.0f);
-    float mean = sum / distances.size();
-    float sq_sum = std::inner_product(distances.begin(), distances.end(), distances.begin(), 0.0f);
-    float stdev = std::sqrt(sq_sum / distances.size() - mean * mean);
-    
-    // 4. 定義距離閾值：僅保留距離小於 (mean + 1.5* stdev) 的點
-    float threshold = mean + 1.5f * stdev;
-    
-    // 建立新的點雲，只保留離群點濾除後的點
-    pcl::PointCloud<PointType>::Ptr filteredCloud(new pcl::PointCloud<PointType>);
-    for (const auto &pt : cloud_cluster->points)
-    {
-        float d = (pt.getVector3fMap() - centroid.head<3>()).norm();
-        if (d <= threshold)
-            filteredCloud->points.push_back(pt);
-    }
-    
-    // 若過濾後點太少，則使用原始點雲
-    if (filteredCloud->empty())
-    {
-        filteredCloud = cloud_cluster;
-    }
-    else
-    {
-        pcl::compute3DCentroid(*filteredCloud, centroid);
-    }
-    
-    // 5. 計算共變異數矩陣（使用過濾後的點雲）
-    Eigen::Matrix3f covariance;
-    pcl::computeCovarianceMatrixNormalized(*filteredCloud, centroid, covariance);
-    
-    // 6. PCA：計算特徵向量與特徵值
-    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(covariance, Eigen::ComputeEigenvectors);
-    Eigen::Matrix3f eigenVectors = eigen_solver.eigenvectors();
-    // 確保正交化：重新計算第三個軸
-    eigenVectors.col(2) = eigenVectors.col(0).cross(eigenVectors.col(1));
-    eigenVectors.col(0) = eigenVectors.col(1).cross(eigenVectors.col(2));
-    eigenVectors.col(1) = eigenVectors.col(2).cross(eigenVectors.col(0));
-    
-    // 將特徵向量重新排序，使得第一軸對應最大特徵值
-    Eigen::Matrix3f eigenVectorsOrdered;
-    eigenVectorsOrdered.col(0) = eigenVectors.col(2);
-    eigenVectorsOrdered.col(1) = eigenVectors.col(1);
-    eigenVectorsOrdered.col(2) = eigenVectors.col(0);
-    eigenVectors = eigenVectorsOrdered;
-    
-    // 7. 僅考慮繞 Z 軸的旋轉（取 yaw 分量）
-    Eigen::Vector3f eulerAngles = eigenVectors.eulerAngles(2, 1, 0);
-    float yaw = eulerAngles[0];
-    Eigen::AngleAxisf zRot(yaw, Eigen::Vector3f::UnitZ());
-    
-    // 8. 建立轉換矩陣：平移到重心，再繞 Z 軸旋轉
-    Eigen::Affine3f transform = Eigen::Affine3f::Identity();
-    transform.translate(centroid.head<3>());
-    transform.rotate(zRot);
-    
-    // 9. 對過濾後的點雲進行逆向轉換，轉到局部座標系
-    pcl::PointCloud<PointType>::Ptr transformedCloud(new pcl::PointCloud<PointType>);
-    pcl::transformPointCloud(*filteredCloud, *transformedCloud, transform.inverse());
-    
-    // 10. 取得局部座標系下的最小/最大值，進而得到尺寸與局部中心
+    // 中心：點雲在各軸上最小值與最大值的平均值 (AABB 中心)
     PointType min_pt, max_pt;
-    pcl::getMinMax3D(*transformedCloud, min_pt, max_pt);
-    float length = max_pt.x - min_pt.x;  // X 軸範圍
-    float width  = max_pt.y - min_pt.y;    // Y 軸範圍
-    float height = max_pt.z - min_pt.z;    // Z 軸範圍
+    Eigen::Vector3f center;
+    pcl::getMinMax3D(*cloud_aligned, min_pt, max_pt);
+    center = (min_pt.getVector3fMap() + max_pt.getVector3fMap()) / 2.0f;
     
-    Eigen::Vector3f local_center((max_pt.x + min_pt.x) / 2.0f,
-                                 (max_pt.y + min_pt.y) / 2.0f,
-                                 (max_pt.z + min_pt.z) / 2.0f);
+    // 2. 計算協方差矩陣 (必須使用重心)
+    Eigen::Matrix3f covariance;
+    pcl::computeCovarianceMatrixNormalized(*cloud_aligned, centroid, covariance);
     
-    // 11. 將局部中心轉回全域座標系
+    // 進行 PCA 計算特徵向量與特徵值
+    Eigen::SelfAdjointEigenSolver<Eigen::Matrix3f> eigen_solver(covariance, Eigen::ComputeEigenvectors);
+    Eigen::Matrix3f eigenVectorsPCA = eigen_solver.eigenvectors();
+
+    // 確保正交化：重新計算第三個軸
+    eigenVectorsPCA.col(2) = eigenVectorsPCA.col(0).cross(eigenVectorsPCA.col(1));
+    eigenVectorsPCA.col(0) = eigenVectorsPCA.col(1).cross(eigenVectorsPCA.col(2));
+    eigenVectorsPCA.col(1) = eigenVectorsPCA.col(2).cross(eigenVectorsPCA.col(0));
+
+    // 按照特徵值從大到小排列（預設 eigen_solver 返回的特徵向量是從小到大排列的）
+    Eigen::Matrix3f eigenVectorsOrdered;
+    eigenVectorsOrdered.col(0) = eigenVectorsPCA.col(2);
+    eigenVectorsOrdered.col(1) = eigenVectorsPCA.col(1);
+    eigenVectorsOrdered.col(2) = eigenVectorsPCA.col(0);
+    eigenVectorsPCA = eigenVectorsOrdered;
+
+    // 3. 計算變換矩陣：只考慮繞全局 Z 軸的旋轉（即只取 yaw）
+    // 取得 Euler 角 (yaw, pitch, roll
+    Eigen::Vector3f eulerAngles = eigenVectorsPCA.eulerAngles(2, 1, 0);
+    float yaw = eulerAngles[0];
+    // 只保留繞 Z 軸旋轉的部分
+    Eigen::AngleAxisf keep_Z_Rot(yaw, Eigen::Vector3f::UnitZ());
+
+    // 建立變換矩陣：先平移到「中心」(AABB 中心)，再旋轉 (順序不能顛倒)
+    Eigen::Affine3f transform = Eigen::Affine3f::Identity();
+    transform.translate(center);
+    transform.rotate(keep_Z_Rot);
+
+    // 4. 將原始點雲轉到局部坐標系中，計算局部下的最小/最大值以得到包圍盒尺寸
+    pcl::PointCloud<PointType>::Ptr transformedCloud(new pcl::PointCloud<PointType>);
+    pcl::transformPointCloud(*cloud_aligned, *transformedCloud, transform.inverse());
+
+    PointType min_pt_T, max_pt_T;
+    pcl::getMinMax3D(*transformedCloud, min_pt_T, max_pt_T);
+    float length = max_pt_T.x - min_pt_T.x;
+    float width  = max_pt_T.y - min_pt_T.y;
+    float height = max_pt_T.z - min_pt_T.z;
+
+    // 計算局部中心 (局部 AABB 中心)
+    Eigen::Vector3f local_center = (min_pt_T.getVector3fMap() + max_pt_T.getVector3fMap()) / 2.0f;
+    // 5. 將局部中心轉回全局坐標
     Eigen::Vector3f global_center = transform * local_center;
     
-    // 12. 儲存結果
-    obb.center = global_center;
+    
+    // 5.將局部中心轉回全局 + 6.儲存結果
+    obb.center = ground_correction.inverse() * global_center;
+    obb.orientation = Eigen::Quaternionf(ground_correction.inverse().rotation()) 
+                      * Eigen::Quaternionf(keep_Z_Rot);
     obb.dimensions = Eigen::Vector3f(length, width, height);
-    obb.orientation = Eigen::Quaternionf(zRot); // 僅用 Z 軸旋轉表示
+
+    // ========== 在這裡把 transformedCloud 存進去 ==========
+    obb.localCloud = transformedCloud;
     
     return obb;
-}
+}   

@@ -43,7 +43,7 @@ EuclideanClusteringResult EuclideanClusterProcessor::clusterCloud(
     typename pcl::search::KdTree<PointTypeIO>::Ptr searchTree(new pcl::search::KdTree<PointTypeIO>);
     ne.setInputCloud(cloud);
     ne.setSearchMethod(searchTree);
-    ne.setRadiusSearch(0.3);
+    ne.setRadiusSearch(0.1);
     ne.compute(*cloud_with_normals);
     
     // 2. Conditional Euclidean Clustering

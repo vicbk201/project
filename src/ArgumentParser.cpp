@@ -11,7 +11,7 @@ bool ArgumentParser::parseArguments(int argc, char** argv,
                                     std::string& outputCloudFile)
 {
     // 預設解析度
-    resolution = 0.2f;
+    resolution = 0.1f;
     // 清空方法參數
     downsampleMethod = "";
     clusterMethod = "";

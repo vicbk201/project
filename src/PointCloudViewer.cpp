@@ -9,6 +9,60 @@
 #include <iostream>
 #include <sstream>
 #include <cmath>
+#include <tuple>
+#include <vector>
+
+pcl::PointCloud<pcl::PointXYZRGB>::Ptr convertLabelToRGB(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
+{
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr coloredCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
+    coloredCloud->points.resize(cloud->points.size());
+
+    // 定義20種固定顏色 (RGB)
+    std::vector<std::tuple<int, int, int>> colors = {
+        {255,   0,   0},   // 紅
+        {  0, 255,   0},   // 綠
+        {  0,   0, 255},   // 藍
+        {255, 255,   0},   // 黃
+        {  0, 255, 255},   // 青
+        {255,   0, 255},   // 品紅
+        {128,   0,   0},   // 深紅
+        {  0, 128,   0},   // 深綠
+        {  0,   0, 128},   // 深藍
+        {128, 128,   0},   // 橄欖
+        {  0, 128, 128},   // 螢光藍
+        {128,   0, 128},   // 紫
+        {192, 192, 192},   // 銀
+        {128, 128, 128},   // 灰
+        { 64,  64,  64},   // 深灰
+        {255, 128,   0},   // 橙
+        {255,   0, 128},   // 粉紅橙
+        {  0, 255, 128},   // 薄荷綠
+        {128, 255,   0},   // 淡綠
+        {  0, 128, 255}    // 淡藍
+    };
+
+    for (size_t i = 0; i < cloud->points.size(); i++) {
+        const auto &pt = cloud->points[i];
+        pcl::PointXYZRGB pt_rgb;
+        pt_rgb.x = pt.x;
+        pt_rgb.y = pt.y;
+        pt_rgb.z = pt.z;
+        // 使用 label % 20 來生成20種離散顏色
+        int label = static_cast<int>(pt.intensity);
+        int mod = std::abs(label) % 20;
+        int r, g, b;
+        std::tie(r, g, b) = colors[mod];
+        pt_rgb.r = r;
+        pt_rgb.g = g;
+        pt_rgb.b = b;
+        coloredCloud->points[i] = pt_rgb;
+    }
+    coloredCloud->width  = static_cast<uint32_t>(coloredCloud->points.size());
+    coloredCloud->height = 1;
+    coloredCloud->is_dense = cloud->is_dense;
+    return coloredCloud;
+}
+
 
 void PointCloudViewer::displayProcessedCloud(
     pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, 
@@ -28,11 +82,21 @@ void PointCloudViewer::displayProcessedCloud(
         new pcl::visualization::PCLVisualizer("Processed Point Cloud"));
     viewer->setBackgroundColor(0, 0, 0);
 
+    /*
     // 使用 intensity 欄位作為顏色處理器
     pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_handler(processedCloud, "intensity");
     viewer->addPointCloud<pcl::PointXYZI>(processedCloud, intensity_handler, "processed_cloud");
+    */
+
+    // === 修改部分：用自訂轉換函式將點雲的 intensity (聚類標籤) 映射到固定色彩
+    pcl::PointCloud<pcl::PointXYZRGB>::Ptr coloredCloud = convertLabelToRGB(processedCloud);
+    // 使用 RGB 欄位作為顏色處理器
+    pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb_handler(coloredCloud);
+    viewer->addPointCloud<pcl::PointXYZRGB>(coloredCloud, rgb_handler, "processed_cloud");
+    // === end 修改
     
-    // 加入每個 OBB 的視覺化
+
+    //加入每個 OBB 的視覺化
     for (size_t i = 0; i < obb_list.size(); i++) {
         const auto &obb = obb_list[i];
         std::stringstream cubeId;
@@ -46,7 +110,7 @@ void PointCloudViewer::displayProcessedCloud(
         viewer->setShapeRenderingProperties(
             pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 1.0, 1.0, cubeId.str());
             
-        /*
+        
         // 建立文字內容：尺寸資訊
         char text[100];
         float length = std::fabs(obb.dimensions.x());
@@ -82,7 +146,7 @@ void PointCloudViewer::displayProcessedCloud(
             // 設定 follower 的攝影機（以確保文字面向攝影機）
             textActor->SetCamera(renderer->GetActiveCamera());
         }
-        */
+        
     }
 
     // 顯示座標系統並初始化攝影機參數
