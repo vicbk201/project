@@ -54,11 +54,12 @@ int main(int argc, char **argv)
     std::cout << "原始點雲數量: " << cloud->size() << std::endl;
     */
    
+    
     //載入資料
     auto raw_input = PCDLoader::loadPCD(cloudFile);
     auto raw_background = PCDLoader::loadPCD("/home/semilux/Documents/fortsense_test_pcd/background/4084-563116000.pcd");
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
-    float background_resolution = 0.1f;
+    float background_resolution = 0.15f;
     
     if (!raw_input || raw_input->empty())
     {
@@ -101,8 +102,8 @@ int main(int argc, char **argv)
     pcl::ModelCoefficients::Ptr fixed_plane(new pcl::ModelCoefficients());
     fixed_plane->values = {-0.109833f, -0.0308086f, 0.993473f, 2.37525f};
 
-    auto groundResult = GroundRemovalProcessor::removeGround(downsampledCloud) ;
-    // auto groundResult = GroundRemovalProcessor::removeGroundWithPlane(downsampledCloud, fixed_plane, 0.08f);  // 第三個參數是距離閾值 threshold
+    // auto groundResult = GroundRemovalProcessor::removeGround(downsampledCloud) ;
+    auto groundResult = GroundRemovalProcessor::removeGroundWithPlane(downsampledCloud, fixed_plane, 0.07f);  // 第三個參數是距離閾值 threshold
     auto groundRemovedCloud = groundResult.cloud;
     std::cout << "地面去除後點雲數量: " << groundRemovedCloud->size()
               << " (算法耗時: " << std::fixed << std::setprecision(2) << groundResult.runtime_ms << " ms)" << std::endl;
@@ -116,7 +117,7 @@ int main(int argc, char **argv)
     
     auto filteredCloud = OutlierRemovalProcessor::removeOutliers(groundRemovedCloud, 0.35f, 3);
     groundRemovedCloud = filteredCloud;
-    std::cout << "離群點移除後點雲數量: " << groundRemovedCloud->size() << std::endl;
+
 
     // 進行聚類處理
     pcl::PointCloud<pcl::PointXYZI>::Ptr clusteredCloud;
@@ -129,7 +130,7 @@ int main(int argc, char **argv)
     }
     else if (clusterMethod == "dbscan")
     {
-        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 0.5, 20);
+        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 0.5,20);
         std::cout << "DBSCAN Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
@@ -153,7 +154,7 @@ int main(int argc, char **argv)
         clusterMap[label]->points.push_back(pt);
     }
 
-    std::cout << "Total clusters: " << clusterMap.size() << std::endl;
+    std::cout << "原始clusters: " << clusterMap.size() << std::endl;
 
     // 先複製原 clusterMap 的所有 key（避免直接在迭代中修改 map）
     std::vector<int> clusterKeys;
@@ -167,133 +168,153 @@ int main(int argc, char **argv)
     std::vector<OrientedBoundingBox> validOBB;
     int newBaseLabel = 1000;
 
+    
+    // 針對每個 cluster 計算 OBB
     for (auto clusterLabel : clusterKeys)
     {
         auto cloudSeg = clusterMap[clusterLabel];
         if (!cloudSeg || cloudSeg->empty()) continue;
 
-        // 先計算整個大群的 OBB
+        // 計算大群的 OBB 並取得尺寸
         OrientedBoundingBox obb = OBBFittingProcessor::computeOBB(cloudSeg, &groundResult.ground_coefficients);
         float length = std::fabs(obb.dimensions.x());
         float width  = std::fabs(obb.dimensions.y());
         float height = std::fabs(obb.dimensions.z());
-
-        // 判斷是否符合二次分群條件
-        bool heightOK = (height >= 0.8f && height <= 2.0f);
-        bool lengthOK = (length > 1.2f && length < 3.0f);
-        bool widthOK  = (width  > 0.8f && width  < 3.0f);
-        bool needMeanShift = heightOK && (lengthOK || widthOK);
-
-        if (needMeanShift && obb.localCloud && !obb.localCloud->empty())
+    
+        // 定義條件：只顯示符合單一行人或多人候選的聚類
+        bool singleCandidate = (length < 1.2f && width < 1.2f && height >= 0.8f && height <= 2.0f);
+        bool multiCandidate  = (!singleCandidate) &&
+                               (((length > 1.2f && length < 3.0f) || (width > 1.2f && width < 3.0f)) &&
+                                (height >= 0.8f && height <= 2.0f));
+    
+        if(singleCandidate)
         {
-           float bandwidth = 0.2f; // 可根據實際調整
-           int   minPoints = 20;
-           /*
-           std::cout << "[DEBUG] clusterLabel=" << clusterLabel
-                     << " -> Trigger MeanShift, band=" << bandwidth 
-                     << ", minPts=" << minPoints << std::endl;
-           */          
-        
-            // 執行 MeanShift，得到 subLabels（subLabels 的大小應與 cloudSeg->size() 相同）
+            // 單一行人直接加入 OBB 顯示
+            for (auto &pt : cloudSeg->points)
+                pt.intensity = float(clusterLabel);
+            newClusterMap[clusterLabel] = cloudSeg;
+            validOBB.push_back(obb);
+        }
+        else if(multiCandidate && obb.localCloud && !obb.localCloud->empty())
+        {
+            // 多人候選的群組，使用 MeanShift 進行拆分，拆分後每個子群計算新的 OBB 並加入有效 OBB 列表
+            float bandwidth = 0.2f; // 可根據實際情況調整
+            int minPoints = 20;
             std::vector<int> subLabels = MeanShiftProcessor::separateClosePedestriansByLocalCloud(
-                                                 obb, bandwidth, minPoints, newBaseLabel);
-                                                
-            // Debug：輸出 subLabels 統計
+                                             obb, bandwidth, minPoints, newBaseLabel);
+
+            // 統計拆分結果（可用於 debug）
             std::map<int,int> labelCount;
-            for (auto lbl : subLabels) {
-                 labelCount[lbl]++;
-            }
-            /*
-            std::cout << "[DEBUG] subLabels size=" << subLabels.size() 
-                      << ", unique labels => "; 
-            
+            for (auto lbl : subLabels)
+                labelCount[lbl]++;
 
-            for (auto &p : labelCount) {
-                 std::cout << p.first << "(" << p.second << " pts) ";
-            }
-            std::cout << std::endl;
-
-            */
-
-            // 檢查拆分結果：如果唯一子群數 <= 1，代表 MeanShift 沒有實際拆分出多個群
             if(labelCount.size() <= 1)
             {
-                /*std::cout << "[DEBUG] clusterLabel=" << clusterLabel 
-                          << " 拆分結果僅一群, 保留原 OBB" << std::endl; */
-                
-                // 保留原群：更新 intensity 為原 clusterLabel
+                // MeanShift 沒有有效拆分出多個群組時，保留原群但不加入 OBB
                 for (auto &pt : cloudSeg->points)
                     pt.intensity = float(clusterLabel);
                 newClusterMap[clusterLabel] = cloudSeg;
-                // 同時保留原大群 OBB（如果你希望顯示原有框）
-                validOBB.push_back(obb);
+                // 可選：如果你不想顯示不合格的群組，不 push_back OBB
             }
-            else if (subLabels.size() == cloudSeg->size())
+            else if(subLabels.size() == cloudSeg->size())
             {
-                // 如果有多個子群則拆分原群：
+                // 拆分出多個子群時，對每個子群重新計算 OBB 並加入顯示
                 std::map<int, pcl::PointCloud<pcl::PointXYZI>::Ptr> subClusterMap;
-                for (size_t i = 0; i < cloudSeg->size(); i++) {
+                for (size_t i = 0; i < cloudSeg->size(); i++)
+                {
                     int subLabel = subLabels[i];
-                    // 忽略噪點 (-2) 的點（或根據需求處理）
-                    if (subLabel == -2) continue;
-                    if (subClusterMap.find(subLabel) == subClusterMap.end()) {
+                    if (subLabel == -2) continue; // 忽略噪點
+                    if (subClusterMap.find(subLabel) == subClusterMap.end())
                         subClusterMap[subLabel] = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
-                    }
                     subClusterMap[subLabel]->points.push_back(cloudSeg->points[i]);
                 }
-            
-                // 針對拆分出的每個子群重新計算 OBB，更新 intensity，並放入 newClusterMap
-                for (auto &kv_sub : subClusterMap) {
-                     int newLabel = kv_sub.first; // 此 label自 MeanShift 結果
-                     pcl::PointCloud<pcl::PointXYZI>::Ptr subCloud = kv_sub.second;
-                     // 計算子群的 OBB
-                     OrientedBoundingBox subOBB = OBBFittingProcessor::computeOBB(subCloud, &groundResult.ground_coefficients);
-                     validOBB.push_back(subOBB);
-                     // 更新子群每個點的 intensity 為 newLabel
-                     for (auto &pt : subCloud->points)
-                          pt.intensity = float(newLabel);
-                     // 將子群加入 newClusterMap
-                     newClusterMap[newLabel] = subCloud;
+
+                for (auto &kv_sub : subClusterMap)
+                {
+                    int newLabel = kv_sub.first;
+                    pcl::PointCloud<pcl::PointXYZI>::Ptr subCloud = kv_sub.second;
+                    OrientedBoundingBox subOBB = OBBFittingProcessor::computeOBB(subCloud, &groundResult.ground_coefficients);
+                    validOBB.push_back(subOBB);
+                    for (auto &pt : subCloud->points)
+                        pt.intensity = float(newLabel);
+                    newClusterMap[newLabel] = subCloud;
                 }
-                // 刪除原本的大群
                 newClusterMap.erase(clusterLabel);
-            
-                // 更新 newBaseLabel 避免新的子群 label 與之重複
+                // 避免 label 重複，更新 newBaseLabel（可依實際需求調整）
                 int maxSub = -1;
-                for (auto &p : subClusterMap) {
-                    if (p.first > maxSub)
-                        maxSub = p.first;
-                }
-                if (maxSub >= 0)
-                    newBaseLabel = maxSub + 10;
+                for (auto &p : subClusterMap)
+                    if(p.first > maxSub)
+                         maxSub = p.first;
+                if(maxSub >= 0)
+                     newBaseLabel = maxSub + 10;
             }
             else
             {
                 std::cerr << "[Warning] MeanShift output size 與 cloudSeg size 不匹配\n";
             }
-        } 
+        }
         else
         {
-             // std::cout << "[DEBUG] clusterLabel=" << clusterLabel << " -> No MeanShift" << std::endl;
-             // 不執行二次分群，保留原群，更新 intensity
-             for (auto &pt : cloudSeg->points)
-                 pt.intensity = float(clusterLabel);
-             newClusterMap[clusterLabel] = cloudSeg;
-             validOBB.push_back(obb);
+            // 若該聚類不符合任何條件，就不添加 OBB
+            for (auto &pt : cloudSeg->points)
+                pt.intensity = float(clusterLabel);
+            newClusterMap[clusterLabel] = cloudSeg;
+            // 不 push_back 有效 OBB
+        }
+    }
+    // 組合 newClusterMap 成 finalCloud
+    pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    // 在這裡印出拆分後 cluster 的數量
+    std::cout << "拆分cluster: " << newClusterMap.size() << std::endl;
+
+    // 組合只有 validOBB 中的 cluster（表示符合條件的 OBB 才會輸出）
+    std::set<int> validLabels;
+    for (const auto& obb : validOBB)
+    { 
+        // OBBFittingProcessor 裡應該要有 label，你可以在 OrientedBoundingBox 裡加入 int label;
+        // 如果沒有，可以考慮在 push_back 時搭配 label 一起儲存
+        // 這裡暫時改成透過 intensity推估
+        if (obb.localCloud && !obb.localCloud->empty())
+        {
+            int label = static_cast<int>(obb.localCloud->points[0].intensity);
+            validLabels.insert(label);
         }
     }
 
-    // 組合 newClusterMap 成 finalCloud
-    pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    for (auto &kv : newClusterMap)
+    {
+        int label = kv.first;
+        if (validLabels.find(label) == validLabels.end())
+            continue; // 跳過沒有 OBB 的群組
+
+        auto &segCloud = kv.second;
+        for (auto &pt : segCloud->points)
+            finalCloud->points.push_back(pt);
+    }
+    /*
     for (auto &kv : newClusterMap)
     {
         auto &segCloud = kv.second;
         for (auto &pt : segCloud->points)
-             finalCloud->points.push_back(pt);
+                finalCloud->points.push_back(pt);
     }
     finalCloud->width  = finalCloud->points.size();
     finalCloud->height = 1;
     finalCloud->is_dense = true;
+    */
+
+     // 若指定要輸出檔
+    if (!outputCloudFile.empty())
+    {        
+        std::cout << "Output file specified: " << outputCloudFile << std::endl;
+        std::cout << "Saving processed cloud to: " << outputCloudFile << std::endl;
+        if (pcl::io::savePCDFile(outputCloudFile, *finalCloud) == -1)
+        {
+            std::cerr << "Error: 儲存點雲失敗！" << std::endl;
+            return -1;
+        }
+    }
+
 
     // 將 finalCloud 給 viewer
     try {
@@ -304,16 +325,6 @@ int main(int argc, char **argv)
         std::cerr << "顯示點雲時發生錯誤: " << e.what() << std::endl;
     }
 
-    // 若指定要輸出檔
-    if (!outputCloudFile.empty())
-    {
-        std::cout << "Saving processed cloud to: " << outputCloudFile << std::endl;
-        if (pcl::io::savePCDFile(outputCloudFile, *finalCloud) == -1)
-        {
-            std::cerr << "Error: 儲存點雲失敗！" << std::endl;
-            return -1;
-        }
-    }
-
+   
     return 0;
 }

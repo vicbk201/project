@@ -33,7 +33,6 @@ add_executable(app
     src/OBBFittingProcessor.cpp
     src/BackgroundRemovalProcessor.cpp
     src/OutlierRemovalProcessor.cpp
-    src/HeadCountingSplitter.cpp
     src/MeanShiftProcessor.cpp
 )
 

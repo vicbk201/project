@@ -75,6 +75,7 @@ bool ArgumentParser::parseArguments(int argc, char** argv,
         } else if (arg == "--o" || arg == "--output") {
             if (i + 1 < argc) {
                 outputCloudFile = argv[++i];
+                std::cout << "Parsed output file: " << outputCloudFile << std::endl; // 加入除錯印出
             } else {
                 std::cerr << "Error: " << arg << " 需要一個完整的檔案路徑（含檔名與副檔名）" << std::endl;
                 return false;
