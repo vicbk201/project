@@ -16,6 +16,7 @@
 #include "BackgroundRemovalProcessor.h"
 #include "OutlierRemovalProcessor.h"
 #include "MeanShiftProcessor.h"
+#include "FeatureExtractionProcessor.h"
 
 
 
@@ -262,6 +263,7 @@ int main(int argc, char **argv)
             // 不 push_back 有效 OBB
         }
     }
+
     // 組合 newClusterMap 成 finalCloud
     pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
     // 在這裡印出拆分後 cluster 的數量
