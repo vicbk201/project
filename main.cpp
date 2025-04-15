@@ -119,12 +119,12 @@ int main(int argc, char **argv)
     auto filteredCloud = OutlierRemovalProcessor::removeOutliers(groundRemovedCloud, 0.35f, 3);
     groundRemovedCloud = filteredCloud;
 
-
+    
     // 進行聚類處理
     pcl::PointCloud<pcl::PointXYZI>::Ptr clusteredCloud;
     if (clusterMethod == "euclidean")
     {
-        auto clusteringResult = EuclideanClusterProcessor::clusterCloud(groundRemovedCloud, 3);
+        auto clusteringResult = EuclideanClusterProcessor::clusterCloud(groundRemovedCloud, 100);
         std::cout << "Euclidean Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
@@ -142,7 +142,8 @@ int main(int argc, char **argv)
         return -1;
     }
 
-     // 將分群後的點雲依照 intensity (label) 打包到 map
+    
+    // 將分群後的點雲依照 intensity (label) 打包到 map
     std::map<int, pcl::PointCloud<pcl::PointXYZI>::Ptr> clusterMap;
     for (const auto &pt : clusteredCloud->points)
     {
@@ -156,7 +157,8 @@ int main(int argc, char **argv)
     }
 
     std::cout << "原始clusters: " << clusterMap.size() << std::endl;
-
+    
+    /*
     // 先複製原 clusterMap 的所有 key（避免直接在迭代中修改 map）
     std::vector<int> clusterKeys;
     for (const auto &kv : clusterMap)
@@ -310,7 +312,7 @@ int main(int argc, char **argv)
     {        
         std::cout << "Output file specified: " << outputCloudFile << std::endl;
         std::cout << "Saving processed cloud to: " << outputCloudFile << std::endl;
-        if (pcl::io::savePCDFile(outputCloudFile, *finalCloud) == -1)
+        if (pcl::io::savePCDFile(outputCloudFile, *groundRemovedCloud) == -1)
         {
             std::cerr << "Error: 儲存點雲失敗！" << std::endl;
             return -1;
@@ -320,7 +322,7 @@ int main(int argc, char **argv)
 
     // 將 finalCloud 給 viewer
     try {
-        PointCloudViewer::displayProcessedCloud(finalCloud, resolution, validOBB);
+        PointCloudViewer::displayProcessedCloud(groundRemovedCloud, resolution);
     }
     catch (const std::exception &e)
     {

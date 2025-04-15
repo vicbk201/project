@@ -6,15 +6,8 @@
 #include <pcl/common/common.h>
 #include <Eigen/Dense>
 #include <vector>
+#include "OBBFittingProcessor.h"
 
-// 假設你的 OBB 模組中定義了 OrientedBoundingBox 結構，類似如下：
-struct OrientedBoundingBox
-{
-    Eigen::Vector3f position;    // 中心點
-    Eigen::Vector3f dimensions;  // 尺寸 (L, W, H)
-    Eigen::Matrix3f rotation;    // 方向矩陣（主軸）
-    pcl::PointCloud<pcl::PointXYZI>::Ptr localCloud; // 該 OBB 對應內部點雲（如果有）
-};
 
 struct ClusterFeatures
 {
