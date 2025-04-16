@@ -16,7 +16,6 @@
 #include "BackgroundRemovalProcessor.h"
 #include "OutlierRemovalProcessor.h"
 #include "MeanShiftProcessor.h"
-#include "FeatureExtractionProcessor.h"
 
 
 
@@ -55,7 +54,6 @@ int main(int argc, char **argv)
     std::cout << "原始點雲數量: " << cloud->size() << std::endl;
     */
    
-    
     //載入資料
     auto raw_input = PCDLoader::loadPCD(cloudFile);
     auto raw_background = PCDLoader::loadPCD("/home/semilux/Documents/fortsense_test_pcd/background/4084-563116000.pcd");
@@ -76,6 +74,8 @@ int main(int argc, char **argv)
     {
         cloud = BackgroundRemovalProcessor::removeBackgroundByOctree(raw_input, raw_background, background_resolution);
     }
+
+
 
     // 選擇下採樣方法
     pcl::PointCloud<pcl::PointXYZI>::Ptr downsampledCloud;
@@ -104,7 +104,7 @@ int main(int argc, char **argv)
     fixed_plane->values = {-0.109833f, -0.0308086f, 0.993473f, 2.37525f};
 
     // auto groundResult = GroundRemovalProcessor::removeGround(downsampledCloud) ;
-    auto groundResult = GroundRemovalProcessor::removeGroundWithPlane(downsampledCloud, fixed_plane, 0.07f);  // 第三個參數是距離閾值 threshold
+    auto groundResult = GroundRemovalProcessor::removeGroundWithPlane(downsampledCloud, fixed_plane, 0.08f);  // 第三個參數是距離閾值 threshold
     auto groundRemovedCloud = groundResult.cloud;
     std::cout << "地面去除後點雲數量: " << groundRemovedCloud->size()
               << " (算法耗時: " << std::fixed << std::setprecision(2) << groundResult.runtime_ms << " ms)" << std::endl;
@@ -119,19 +119,18 @@ int main(int argc, char **argv)
     auto filteredCloud = OutlierRemovalProcessor::removeOutliers(groundRemovedCloud, 0.35f, 3);
     groundRemovedCloud = filteredCloud;
 
-    
     // 進行聚類處理
     pcl::PointCloud<pcl::PointXYZI>::Ptr clusteredCloud;
     if (clusterMethod == "euclidean")
     {
-        auto clusteringResult = EuclideanClusterProcessor::clusterCloud(groundRemovedCloud, 100);
+        auto clusteringResult = EuclideanClusterProcessor::clusterCloud(groundRemovedCloud, 0.5);
         std::cout << "Euclidean Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
     }
     else if (clusterMethod == "dbscan")
     {
-        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 0.5,20);
+        auto clusteringResult = DBSCANClusteringProcessor::clusterCloud(groundRemovedCloud, 0.5, 20);
         std::cout << "DBSCAN Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
@@ -142,8 +141,7 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    
-    // 將分群後的點雲依照 intensity (label) 打包到 map
+     // 將分群後的點雲依照 intensity (label) 打包到 map
     std::map<int, pcl::PointCloud<pcl::PointXYZI>::Ptr> clusterMap;
     for (const auto &pt : clusteredCloud->points)
     {
@@ -155,10 +153,45 @@ int main(int argc, char **argv)
         }
         clusterMap[label]->points.push_back(pt);
     }
-
+    
     std::cout << "原始clusters: " << clusterMap.size() << std::endl;
     
+    
     /*
+    // 計算每個聚類的 OBB 並根據尺寸過濾只保留人
+    std::vector<OrientedBoundingBox> validOBB;
+    int validCount = 0;
+    for (const auto &cluster : clusterMap)
+    {
+        int clusterLabel = cluster.first;
+        OrientedBoundingBox obb = OBBFittingProcessor::computeOBB(cluster.second);
+        validOBB.push_back(obb);
+
+        
+        // 直接取對齊後的尺寸
+        float length = std::fabs(obb.dimensions.x());  // x 為長度
+        float width  = std::fabs(obb.dimensions.y());  // y 為寬度
+        float height = std::fabs(obb.dimensions.z());  // z 為高度
+
+        // 篩選條件（根據您的應用調整閾值）
+        bool isHuman = (height >= 0.8f && height <= 2.0f && length <= 1.2f && width <= 1.2f);
+
+        if (isHuman)
+        {
+        validOBB.push_back(obb);
+        validCount++;
+        }
+        
+    }
+   
+    std::cout << "Valid clusters:" << validCount <<std::endl;
+
+    clusteredCloud->width = static_cast<uint32_t>(clusteredCloud->points.size());
+    clusteredCloud->height = 1;
+    clusteredCloud->is_dense = true;
+    */     
+
+    
     // 先複製原 clusterMap 的所有 key（避免直接在迭代中修改 map）
     std::vector<int> clusterKeys;
     for (const auto &kv : clusterMap)
@@ -170,8 +203,7 @@ int main(int argc, char **argv)
     // 用來保存有效 OBB（顯示用）
     std::vector<OrientedBoundingBox> validOBB;
     int newBaseLabel = 1000;
-
-    
+  
     // 針對每個 cluster 計算 OBB
     for (auto clusterLabel : clusterKeys)
     {
@@ -184,6 +216,11 @@ int main(int argc, char **argv)
         float width  = std::fabs(obb.dimensions.y());
         float height = std::fabs(obb.dimensions.z());
     
+        std::cout << "[DEBUG] Cluster " << clusterLabel 
+                  << " OBB dimensions: length = " << length 
+                  << ", width = " << width 
+                  << ", height = " << height << std::endl;
+
         // 定義條件：只顯示符合單一行人或多人候選的聚類
         bool singleCandidate = (length < 1.2f && width < 1.2f && height >= 0.8f && height <= 2.0f);
         bool multiCandidate  = (!singleCandidate) &&
@@ -237,6 +274,7 @@ int main(int argc, char **argv)
                     int newLabel = kv_sub.first;
                     pcl::PointCloud<pcl::PointXYZI>::Ptr subCloud = kv_sub.second;
                     OrientedBoundingBox subOBB = OBBFittingProcessor::computeOBB(subCloud, &groundResult.ground_coefficients);
+                    subOBB.localCloud = subCloud;  // 確保 localCloud 正確設置
                     validOBB.push_back(subOBB);
                     for (auto &pt : subCloud->points)
                         pt.intensity = float(newLabel);
@@ -247,9 +285,9 @@ int main(int argc, char **argv)
                 int maxSub = -1;
                 for (auto &p : subClusterMap)
                     if(p.first > maxSub)
-                         maxSub = p.first;
+                        maxSub = p.first;
                 if(maxSub >= 0)
-                     newBaseLabel = maxSub + 10;
+                    newBaseLabel = maxSub + 10;
             }
             else
             {
@@ -266,18 +304,17 @@ int main(int argc, char **argv)
         }
     }
 
+    
     // 組合 newClusterMap 成 finalCloud
     pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
-    // 在這裡印出拆分後 cluster 的數量
     std::cout << "拆分cluster: " << newClusterMap.size() << std::endl;
-
     // 組合只有 validOBB 中的 cluster（表示符合條件的 OBB 才會輸出）
     std::set<int> validLabels;
     for (const auto& obb : validOBB)
-    { 
+    {
         // OBBFittingProcessor 裡應該要有 label，你可以在 OrientedBoundingBox 裡加入 int label;
         // 如果沒有，可以考慮在 push_back 時搭配 label 一起儲存
-        // 這裡暫時改成透過 intensity推估
+        // 這裡暫時改成透過 intensity 推估
         if (obb.localCloud && !obb.localCloud->empty())
         {
             int label = static_cast<int>(obb.localCloud->points[0].intensity);
@@ -295,40 +332,48 @@ int main(int argc, char **argv)
         for (auto &pt : segCloud->points)
             finalCloud->points.push_back(pt);
     }
+
+    finalCloud->width  = finalCloud->points.size();
+    finalCloud->height = 1;
+    finalCloud->is_dense = true;
+    
+
     /*
+    // 組合 newClusterMap 成 finalCloud
+    pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    std::cout << "拆分cluster: " << newClusterMap.size() << std::endl;
     for (auto &kv : newClusterMap)
     {
         auto &segCloud = kv.second;
         for (auto &pt : segCloud->points)
-                finalCloud->points.push_back(pt);
+            finalCloud->points.push_back(pt);
     }
     finalCloud->width  = finalCloud->points.size();
     finalCloud->height = 1;
     finalCloud->is_dense = true;
     */
 
-     // 若指定要輸出檔
+    // 若指定要輸出檔
     if (!outputCloudFile.empty())
-    {        
-        std::cout << "Output file specified: " << outputCloudFile << std::endl;
+    {
         std::cout << "Saving processed cloud to: " << outputCloudFile << std::endl;
-        if (pcl::io::savePCDFile(outputCloudFile, *groundRemovedCloud) == -1)
+        if (pcl::io::savePCDFile(outputCloudFile, *finalCloud) == -1)
         {
             std::cerr << "Error: 儲存點雲失敗！" << std::endl;
             return -1;
         }
     }
 
-
     // 將 finalCloud 給 viewer
     try {
-        PointCloudViewer::displayProcessedCloud(groundRemovedCloud, resolution);
+        PointCloudViewer::displayProcessedCloud(finalCloud, resolution, validOBB);
     }
     catch (const std::exception &e)
     {
         std::cerr << "顯示點雲時發生錯誤: " << e.what() << std::endl;
     }
 
-   
+ 
+
     return 0;
 }

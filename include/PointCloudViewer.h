@@ -6,7 +6,7 @@
 
 class PointCloudViewer {
 public:
-    static void displayProcessedCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, float resolution);
+    static void displayProcessedCloud(pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, float resolution, const std::vector<OrientedBoundingBox>& obb_list);
 };
 
 #endif // POINTCLOUDVIEWER_H

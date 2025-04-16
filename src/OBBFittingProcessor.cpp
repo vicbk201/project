@@ -103,7 +103,20 @@ OrientedBoundingBox OBBFittingProcessor::computeOBB(const pcl::PointCloud<PointT
     Eigen::Vector3f local_center = (min_pt_T.getVector3fMap() + max_pt_T.getVector3fMap()) / 2.0f;
     // 5. 將局部中心轉回全局坐標
     Eigen::Vector3f global_center = transform * local_center;
-    
+
+    // 新增：依據局部 AABB 範圍篩選點雲，使 localCloud 僅包含位於 [min_pt_T, max_pt_T] 內的點
+    pcl::PointCloud<PointType>::Ptr localCloudFiltered(new pcl::PointCloud<PointType>);
+
+    for (const auto &pt : transformedCloud->points)
+    {
+        if (pt.x >= min_pt_T.x && pt.x <= max_pt_T.x &&
+            pt.y >= min_pt_T.y && pt.y <= max_pt_T.y &&
+            pt.z >= min_pt_T.z && pt.z <= max_pt_T.z)
+        {
+            localCloudFiltered->points.push_back(pt);
+        }
+    }
+
     
     // 5.將局部中心轉回全局 + 6.儲存結果
     obb.center = ground_correction.inverse() * global_center;
@@ -111,8 +124,9 @@ OrientedBoundingBox OBBFittingProcessor::computeOBB(const pcl::PointCloud<PointT
                       * Eigen::Quaternionf(keep_Z_Rot);
     obb.dimensions = Eigen::Vector3f(length, width, height);
 
+
     // ========== 在這裡把 transformedCloud 存進去 ==========
     obb.localCloud = transformedCloud;
-    
+
     return obb;
 }   

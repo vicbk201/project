@@ -12,7 +12,7 @@
 #include <tuple>
 #include <vector>
 
-/*
+
 pcl::PointCloud<pcl::PointXYZRGB>::Ptr convertLabelToRGB(pcl::PointCloud<pcl::PointXYZI>::Ptr cloud)
 {
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr coloredCloud(new pcl::PointCloud<pcl::PointXYZRGB>);
@@ -63,12 +63,14 @@ pcl::PointCloud<pcl::PointXYZRGB>::Ptr convertLabelToRGB(pcl::PointCloud<pcl::Po
     coloredCloud->is_dense = cloud->is_dense;
     return coloredCloud;
 }
-*/
+
+
 
 
 void PointCloudViewer::displayProcessedCloud(
-    pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, float resolution)
-   
+    pcl::PointCloud<pcl::PointXYZI>::Ptr processedCloud, 
+    float resolution,
+    const std::vector<OrientedBoundingBox>& obb_list)
 {
     if (!processedCloud || processedCloud->empty()) {
         std::cerr << "Error: Processed cloud is empty." << std::endl;
@@ -83,21 +85,21 @@ void PointCloudViewer::displayProcessedCloud(
         new pcl::visualization::PCLVisualizer("Processed Point Cloud"));
     viewer->setBackgroundColor(0, 0, 0);
 
-    
+    /*
     // 使用 intensity 欄位作為顏色處理器
     pcl::visualization::PointCloudColorHandlerGenericField<pcl::PointXYZI> intensity_handler(processedCloud, "intensity");
     viewer->addPointCloud<pcl::PointXYZI>(processedCloud, intensity_handler, "processed_cloud");
-
-    /*
+    */
+    
+    
     // === 修改部分：用自訂轉換函式將點雲的 intensity (聚類標籤) 映射到固定色彩
     pcl::PointCloud<pcl::PointXYZRGB>::Ptr coloredCloud = convertLabelToRGB(processedCloud);
     // 使用 RGB 欄位作為顏色處理器
     pcl::visualization::PointCloudColorHandlerRGBField<pcl::PointXYZRGB> rgb_handler(coloredCloud);
     viewer->addPointCloud<pcl::PointXYZRGB>(coloredCloud, rgb_handler, "processed_cloud");
     // === end 修改
-    */
     
-    /*
+
     //加入每個 OBB 的視覺化
     for (size_t i = 0; i < obb_list.size(); i++) {
         const auto &obb = obb_list[i];
@@ -112,7 +114,7 @@ void PointCloudViewer::displayProcessedCloud(
         viewer->setShapeRenderingProperties(
             pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 1.0, 1.0, cubeId.str());
             
-        
+        /*
         // 建立文字內容：尺寸資訊
         char text[100];
         float length = std::fabs(obb.dimensions.x());
@@ -148,9 +150,8 @@ void PointCloudViewer::displayProcessedCloud(
             // 設定 follower 的攝影機（以確保文字面向攝影機）
             textActor->SetCamera(renderer->GetActiveCamera());
         }
-        
+        */
     }
-    */
 
     // 顯示座標系統並初始化攝影機參數
     viewer->addCoordinateSystem(1.0);
