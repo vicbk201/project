@@ -17,6 +17,7 @@
 #include "OutlierRemovalProcessor.h"
 #include "MeanShiftProcessor.h"
 #include "FeatureExtractionProcessor.h"
+#include "FeatureExporter.h"      
 
 
 
@@ -221,7 +222,9 @@ int main(int argc, char **argv)
     // 用來保存有效 OBB（顯示用）
     std::vector<OrientedBoundingBox> validOBB;
     std::set<int> validLabels;
+    std::vector<std::pair<int, ClusterFeatures>> featuresList;
     int newBaseLabel = 1000;
+
 
     // 假設 LiDAR 安裝位置
     pcl::PointXYZ lidarPosition(0.0f, 0.0f, 2.4f);
@@ -295,6 +298,8 @@ int main(int argc, char **argv)
                 pt.intensity = float(clusterLabel);
             newClusterMap[clusterLabel] = cloudSeg;
             validOBB.push_back(obb);
+            // 加這一行，把 (label, feat) 推進 featuresList
+            featuresList.emplace_back(clusterLabel, feat);
             validLabels.insert(clusterLabel);   // ← 直接記錄這個 clusterLabel
         }
         else if(multiCandidate && obb.localCloud && !obb.localCloud->empty())
@@ -360,9 +365,10 @@ int main(int argc, char **argv)
                     std::cout << "LocalDensity     : " << feat.localDensity    << "\n";
                     std::cout << "MainAxisAngle    : " << feat.mainAxisAngle   << " deg\n";
                     std::cout << "---------------------------------------\n";
-
+                    
+                    // 同樣把每個子群 (newLabel, feat) 推進 featuresList
+                    featuresList.emplace_back(newLabel, feat);
                     validLabels.insert(newLabel);    // ← 直接記錄這個 subLabel
-                    subOBB.localCloud = subCloud;  // 確保 localCloud 正確設置
                     validOBB.push_back(subOBB);
                     for (auto &pt : subCloud->points)
                         pt.intensity = float(newLabel);
@@ -391,6 +397,14 @@ int main(int argc, char **argv)
             // 不 push_back 有效 OBB
         }
     }
+
+    // ─── 全部特徵都收集完後，呼叫輸出模組 ──────────────────────
+    // 這裡只會輸出 featuresList 中的那幾筆，且 validLabels 都會被打 1
+    FeatureExporter::exportToCSV(
+        featuresList,
+        "/home/semilux/octreevoxelgrid/data/pedestrian_features.csv",
+        validLabels
+    );
 
     // 8. 組 finalCloud、送 viewer
     pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);

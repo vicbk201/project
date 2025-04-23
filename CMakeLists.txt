@@ -35,6 +35,7 @@ add_executable(app
     src/OutlierRemovalProcessor.cpp
     src/MeanShiftProcessor.cpp
     src/FeatureExtractionProcessor.cpp
+    src/FeatureExporter.cpp
 )
 
 target_link_libraries(app ${PCL_LIBRARIES} ${VTK_LIBRARIES})  
