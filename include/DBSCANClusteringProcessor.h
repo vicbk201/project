@@ -8,6 +8,8 @@
 struct DBSCANResult {
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
     double runtime_ms;
+    std::vector<int> labels;    // 加入：每個點的 cluster label
+
 };
 
 class DBSCANClusteringProcessor {

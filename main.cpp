@@ -16,6 +16,7 @@
 #include "BackgroundRemovalProcessor.h"
 #include "OutlierRemovalProcessor.h"
 #include "MeanShiftProcessor.h"
+#include "FeatureExtractionProcessor.h"
 
 
 
@@ -121,12 +122,14 @@ int main(int argc, char **argv)
 
     // 進行聚類處理
     pcl::PointCloud<pcl::PointXYZI>::Ptr clusteredCloud;
+    std::vector<int> labels;
     if (clusterMethod == "euclidean")
     {
         auto clusteringResult = EuclideanClusterProcessor::clusterCloud(groundRemovedCloud, 0.5);
         std::cout << "Euclidean Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
+        labels = std::move(clusteringResult.labels);
     }
     else if (clusterMethod == "dbscan")
     {
@@ -134,6 +137,7 @@ int main(int argc, char **argv)
         std::cout << "DBSCAN Cluster 後點雲數量: " << clusteringResult.cloud->size()
                   << " (算法耗時: " << std::fixed << std::setprecision(2) << clusteringResult.runtime_ms << " ms)" << std::endl;
         clusteredCloud = clusteringResult.cloud;
+        labels = std::move(clusteringResult.labels);
     }
     else
     {
@@ -141,6 +145,20 @@ int main(int argc, char **argv)
         return -1;
     }
 
+    //用 labels + 原始強度 建 clusterMap
+    std::map<int, pcl::PointCloud<pcl::PointXYZI>::Ptr> clusterMap;
+    for (size_t i = 0; i < clusteredCloud->points.size(); ++i) {
+        int lbl = labels[i];
+        if (lbl < 0) continue;  // 跳過噪點
+        if (!clusterMap.count(lbl))
+            clusterMap[lbl] = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
+    // 用 groundRemovedCloud 保留原始 intensity
+    clusterMap[lbl]->points.push_back(groundRemovedCloud->points[i]);
+        
+    }  
+    std::cout << "原始 clusters: " << clusterMap.size() << "\n";
+
+    /*
      // 將分群後的點雲依照 intensity (label) 打包到 map
     std::map<int, pcl::PointCloud<pcl::PointXYZI>::Ptr> clusterMap;
     for (const auto &pt : clusteredCloud->points)
@@ -155,7 +173,7 @@ int main(int argc, char **argv)
     }
     
     std::cout << "原始clusters: " << clusterMap.size() << std::endl;
-    
+    */
     
     /*
     // 計算每個聚類的 OBB 並根據尺寸過濾只保留人
@@ -202,7 +220,11 @@ int main(int argc, char **argv)
 
     // 用來保存有效 OBB（顯示用）
     std::vector<OrientedBoundingBox> validOBB;
+    std::set<int> validLabels;
     int newBaseLabel = 1000;
+
+    // 假設 LiDAR 安裝位置
+    pcl::PointXYZ lidarPosition(0.0f, 0.0f, 2.4f);
   
     // 針對每個 cluster 計算 OBB
     for (auto clusterLabel : clusterKeys)
@@ -229,11 +251,51 @@ int main(int argc, char **argv)
     
         if(singleCandidate)
         {
+            // ─── 只對「單人候選」做特徵提取 ─────────────────────────────────────────
+            ClusterFeatures feat = FeatureExtractionProcessor::computeFeatures(cloudSeg, obb, lidarPosition);
+
+            std::cout << "=== Cluster " << clusterLabel << " Features ===\n";
+            std::cout << "PointCount       : " << feat.pointCount        << "\n";
+            std::cout << "CentroidDistance : " << feat.centroidDistance  << "\n";
+            std::cout << "AverageDistance  : " << feat.averageDistance   << "\n";
+
+            // Covariance Matrix (3×3)
+            std::cout << "CovarianceMatrix : [";
+            for (int i = 0; i < 9; ++i)
+                std::cout << feat.covarianceMatrix[i] << (i<8?", ":"");
+            std::cout << "]\n";
+
+            // Normalized Moments (6)
+            std::cout << "NormalizedMoments: [";
+            for (int i = 0; i < 6; ++i)
+                std::cout << feat.normalizedMoments[i] << (i<5?", ":"");
+            std::cout << "]\n";
+
+            std::cout << "OBB (L×W×H)      : "
+                      << feat.obb_length << " × "
+                      << feat.obb_width  << " × "
+                      << feat.obb_height << "\n";
+            std::cout << "L/W Ratio        : " << feat.lw_ratio       << "\n";
+
+            std::cout << "EigenRatios      : [";
+            for (int i = 0; i < 3; ++i)
+                std::cout << feat.eigenRatios[i] << (i<2?", ":"");
+            std::cout << "]\n";
+
+            std::cout << "IntensityMean    : " << feat.intensityMean   << "\n";
+            std::cout << "IntensityStdDev  : " << feat.intensityStdDev << "\n";
+            std::cout << "LocalDensity     : " << feat.localDensity    << "\n";
+            std::cout << "MainAxisAngle    : " << feat.mainAxisAngle << " deg\n";
+            std::cout << "========================================\n";
+            // ────────────────────────────────────────────────────────────────
+
+
             // 單一行人直接加入 OBB 顯示
             for (auto &pt : cloudSeg->points)
                 pt.intensity = float(clusterLabel);
             newClusterMap[clusterLabel] = cloudSeg;
             validOBB.push_back(obb);
+            validLabels.insert(clusterLabel);   // ← 直接記錄這個 clusterLabel
         }
         else if(multiCandidate && obb.localCloud && !obb.localCloud->empty())
         {
@@ -263,7 +325,7 @@ int main(int argc, char **argv)
                 for (size_t i = 0; i < cloudSeg->size(); i++)
                 {
                     int subLabel = subLabels[i];
-                    if (subLabel == -2) continue; // 忽略噪點
+                    if (subLabel < 0) continue; // 忽略噪點
                     if (subClusterMap.find(subLabel) == subClusterMap.end())
                         subClusterMap[subLabel] = pcl::PointCloud<pcl::PointXYZI>::Ptr(new pcl::PointCloud<pcl::PointXYZI>);
                     subClusterMap[subLabel]->points.push_back(cloudSeg->points[i]);
@@ -274,6 +336,32 @@ int main(int argc, char **argv)
                     int newLabel = kv_sub.first;
                     pcl::PointCloud<pcl::PointXYZI>::Ptr subCloud = kv_sub.second;
                     OrientedBoundingBox subOBB = OBBFittingProcessor::computeOBB(subCloud, &groundResult.ground_coefficients);
+
+                    // ─── 同樣在這裡做特徵提取並印出 ─────────────────────────
+                    ClusterFeatures feat = FeatureExtractionProcessor::computeFeatures(subCloud, subOBB, lidarPosition);
+                    std::cout << "--- Sub-Cluster " << newLabel << " Features ---\n";
+                    std::cout << "PointCount       : " << feat.pointCount        << "\n";
+                    std::cout << "CentroidDistance : " << feat.centroidDistance  << "\n";
+                    std::cout << "AverageDistance  : " << feat.averageDistance   << "\n";
+                    std::cout << "CovarianceMatrix : [";
+                    for (int i = 0; i < 9; ++i) std::cout << feat.covarianceMatrix[i] << (i<8?", ":"");
+                    std::cout << "]\n";
+                    std::cout << "NormalizedMoments: [";
+                    for (int i = 0; i < 6; ++i) std::cout << feat.normalizedMoments[i] << (i<5?", ":"");
+                    std::cout << "]\n";
+                    std::cout << "OBB (L×W×H)      : " << feat.obb_length << "×"
+                              << feat.obb_width << "×" << feat.obb_height << "\n";
+                    std::cout << "L/W Ratio        : " << feat.lw_ratio       << "\n";
+                    std::cout << "EigenRatios      : [";
+                    for (int i = 0; i < 3; ++i) std::cout << feat.eigenRatios[i] << (i<2?", ":"");
+                    std::cout << "]\n";
+                    std::cout << "IntensityMean    : " << feat.intensityMean   << "\n";
+                    std::cout << "IntensityStdDev  : " << feat.intensityStdDev << "\n";
+                    std::cout << "LocalDensity     : " << feat.localDensity    << "\n";
+                    std::cout << "MainAxisAngle    : " << feat.mainAxisAngle   << " deg\n";
+                    std::cout << "---------------------------------------\n";
+
+                    validLabels.insert(newLabel);    // ← 直接記錄這個 subLabel
                     subOBB.localCloud = subCloud;  // 確保 localCloud 正確設置
                     validOBB.push_back(subOBB);
                     for (auto &pt : subCloud->points)
@@ -304,7 +392,19 @@ int main(int argc, char **argv)
         }
     }
 
+    // 8. 組 finalCloud、送 viewer
+    pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
+    for (auto &kv : newClusterMap) {
+        if (validLabels.find(kv.first) == validLabels.end()) continue;
+        finalCloud->points.insert(
+            finalCloud->points.end(),
+            kv.second->points.begin(), kv.second->points.end());
+    }
+    finalCloud->width  = finalCloud->points.size();
+    finalCloud->height = 1;
+    finalCloud->is_dense = true;
     
+    /*
     // 組合 newClusterMap 成 finalCloud
     pcl::PointCloud<pcl::PointXYZI>::Ptr finalCloud(new pcl::PointCloud<pcl::PointXYZI>);
     std::cout << "拆分cluster: " << newClusterMap.size() << std::endl;
@@ -336,7 +436,7 @@ int main(int argc, char **argv)
     finalCloud->width  = finalCloud->points.size();
     finalCloud->height = 1;
     finalCloud->is_dense = true;
-    
+    */
 
     /*
     // 組合 newClusterMap 成 finalCloud

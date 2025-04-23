@@ -60,6 +60,7 @@ EuclideanClusteringResult EuclideanClusterProcessor::clusterCloud(
     cec.segment(*clusters);
     cec.getRemovedClusters(small_clusters, large_clusters);
 
+    /*
     // 3. 使用 intensity 欄位進行視覺化：過小的叢集標記為 -2，過大的叢集標記為 +10，
     for (const auto& small_cluster : (*small_clusters))
         for (const auto& j : small_cluster.indices)
@@ -76,6 +77,27 @@ EuclideanClusteringResult EuclideanClusterProcessor::clusterCloud(
          (*cloud)[j].intensity = label;
     label++;
     }
+    */
+
+        // ← 不再這裡寫 intensity，而是填 labels vector
+    std::vector<int> labels(cloud->points.size(), -1);
+
+    // 噪點：小群 < minSize、大群 > maxSize
+    for (const auto& small_cluster : (*small_clusters))
+      for (auto j : small_cluster.indices)
+        labels[j] = -2;
+    for (const auto& large_cluster : (*large_clusters))
+      for (auto j : large_cluster.indices)
+        labels[j] = +10;
+
+    // 正常 cluster
+    int lbl = 0;
+    for (const auto& cluster : (*clusters))
+    {
+      for (auto j : cluster.indices)
+        labels[j] = lbl;
+      lbl++;
+    }
 
     
     double elapsed = tt.toc();
@@ -83,5 +105,6 @@ EuclideanClusteringResult EuclideanClusterProcessor::clusterCloud(
     EuclideanClusteringResult result;
     result.cloud = cloud;
     result.runtime_ms = elapsed;
+    result.labels     = std::move(labels);
     return result;
 }

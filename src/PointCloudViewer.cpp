@@ -114,7 +114,7 @@ void PointCloudViewer::displayProcessedCloud(
         viewer->setShapeRenderingProperties(
             pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 1.0, 1.0, cubeId.str());
             
-        /*
+        
         // 建立文字內容：尺寸資訊
         char text[100];
         float length = std::fabs(obb.dimensions.x());
@@ -150,7 +150,7 @@ void PointCloudViewer::displayProcessedCloud(
             // 設定 follower 的攝影機（以確保文字面向攝影機）
             textActor->SetCamera(renderer->GetActiveCamera());
         }
-        */
+        
     }
 
     // 顯示座標系統並初始化攝影機參數

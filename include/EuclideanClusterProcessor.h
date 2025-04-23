@@ -7,6 +7,7 @@
 struct EuclideanClusteringResult {
     pcl::PointCloud<pcl::PointXYZI>::Ptr cloud;
     double runtime_ms;
+    std::vector<int> labels;  // ← 新增：每個點的 cluster label
 };
 
 class EuclideanClusterProcessor {

@@ -87,6 +87,7 @@ DBSCANResult DBSCANClusteringProcessor::clusterCloud(
         clusterId++;
     }
 
+    /*
     // 將聚類結果寫回 intensity 欄位：
     // 噪點設定為 -2，其餘直接使用對應的聚類編號
     for (size_t i = 0; i < numPoints; i++) {
@@ -95,6 +96,7 @@ DBSCANResult DBSCANClusteringProcessor::clusterCloud(
         else
             cloud->points[i].intensity = static_cast<float>(labels[i]);
     }
+    */
 
 
     // 計算整個演算法的執行時間（毫秒）
@@ -104,5 +106,7 @@ DBSCANResult DBSCANClusteringProcessor::clusterCloud(
     DBSCANResult result;
     result.cloud = cloud;
     result.runtime_ms = elapsed;
+    result.labels     = labels;  // 回傳 labels
+
     return result;
 }
