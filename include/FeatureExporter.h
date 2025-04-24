@@ -3,21 +3,23 @@
 #define FEATURE_EXPORTER_H
 
 #include <vector>
-#include <string>
 #include <set>
-#include "FeatureExtractionProcessor.h"  // 定義 ClusterFeatures
+#include <string>
+#include <utility>
+#include "FeatureExtractionProcessor.h"  // for ClusterFeatures
 
 class FeatureExporter {
 public:
     /**
-     * 將一組 (label, 特徵) 輸出到 CSV。
-     * @param featuresList  每筆資料對：first=ClusterLabel, second=ClusterFeatures
-     * @param csvPath       輸出檔案路徑
-     * @param labelSet      若非空，只有此集合內的 label 會被打上 LabelFlag=1
+     * @param featuresList 每個 pair.first = cluster label, pair.second = 計算好的特徵
+     * @param csvPath      最終輸出 csv 的完整路徑（可包含 data/ 子目錄）
+     * @param positiveSet  這些 label 將被標記為 IsHuman=1，其餘為 0
      */
-    static void exportToCSV(const std::vector<std::pair<int, ClusterFeatures>>& featuresList,
-                            const std::string& csvPath,
-                            const std::set<int>& labelSet = {});
+    // 新的：前面多一個 filename 欄位
+    static void exportToCSV(
+        const std::vector<std::tuple<std::string,int,ClusterFeatures>>& featuresList,
+        const std::string& csvPath,
+        const std::set<int>& positiveSet);
 };
 
 #endif // FEATURE_EXPORTER_H
