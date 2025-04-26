@@ -278,17 +278,49 @@ int main(int argc, char **argv)
             float length = std::fabs(obb.dimensions.x());
             float width  = std::fabs(obb.dimensions.y());
             float height = std::fabs(obb.dimensions.z());
-    
+
+            // --- 在這裡插入 guard --------------------
+            // 1) 先用 raw_height 做粗過濾：
+            //    如果群組高度實在太高（例如 > 2.5m），很可能是多人大塊或嚴重雜訊，直接跳過
+            float raw_height = height;
+            if (raw_height > 2.50f) {
+            std::cout << "[INFO] Cluster " << clusterLabel << " raw_height=" 
+                      << raw_height << "m > 2.5m, skip\n";
+            continue;  
+            }
+
+            // 2) 再做 clamp 保護：
+            //    把少量噪點拉高的高度限制在 2.2m 以下，避免跳過 singleCandidate
+            height = std::min(raw_height, 2.20f);
+
             std::cout << "[DEBUG] Cluster " << clusterLabel 
                       << " OBB dimensions: length = " << length 
                       << ", width = " << width 
                       << ", height = " << height << std::endl;
 
+            
+
             // 定義條件：只顯示符合單一行人或多人候選的聚類
-            bool singleCandidate = (length < 1.2f && width < 1.2f && height >= 0.8f && height <= 2.0f);
-            bool multiCandidate  = (!singleCandidate) &&
-                                   (((length > 1.2f && length < 3.0f) || (width > 1.2f && width < 3.0f)) &&
-                                    (height >= 0.8f && height <= 2.0f));
+            // 1. 計算輔助變數
+            float longer  = std::max(length, width);
+            float shorter = std::min(length, width);
+            float aspectRatio = longer / shorter;       // 長寬比
+            float area = length * width;         // OBB 橫截面面積
+
+            // 2. 單人候選：OBB不過大，且高度合理
+            bool singleCandidate =
+            (length <= 1.2f && width <= 1.2f) && (height >= 0.8f && height <= 2.2f);
+
+            // 3. 「疑似兩人」的初步篩選：邊長過大，高度仍在合理範圍
+            bool sizeLarge =((length > 1.2f && length < 3.0f) ||(width  > 1.2f && width  < 3.0f)) &&(height >= 0.8f && height <= 2.2f);
+
+            // 4. 進一步確認：  
+            //    - 長寬比要夠大（>1.5）→ 兩人並排或前後都會拉高 ratio  
+            //    - 或是橫截面面積要夠大（>1.0 m²）→ 兩人合並面積通常 >1m²
+            bool shapeOK =(aspectRatio > 1.5f) ||(area > 1.0f);
+
+            // 5. 最終拆分判斷
+            bool multiCandidate = sizeLarge && shapeOK;
     
             if(singleCandidate)
             {
@@ -336,14 +368,14 @@ int main(int argc, char **argv)
                      pt.intensity = float(clusterLabel);
                 newClusterMap[clusterLabel] = cloudSeg;
                 validOBB.push_back(obb);
-                // 加這一行，把 (thisFile,label, feat) 推進 featuresList
+                // 加這一行，把 (thisFile,label, feat) 進 featuresList
                 featuresList.emplace_back(thisFile, clusterLabel, feat);
                 validLabels.insert(clusterLabel);   // ← 直接記錄這個 clusterLabel
             }
-            else if(multiCandidate && obb.localCloud && !obb.localCloud->empty())
+            else if(multiCandidate)
             {
                 // 多人候選的群組，使用 MeanShift 進行拆分，拆分後每個子群計算新的 OBB 並加入有效 OBB 列表
-                float bandwidth = 0.2f; // 可根據實際情況調整
+                float bandwidth = 0.3f; // 可根據實際情況調整
                 int minPoints = 20;
                 std::vector<int> subLabels = MeanShiftProcessor::separateClosePedestriansByLocalCloud(
                                                  obb, bandwidth, minPoints, newBaseLabel);
