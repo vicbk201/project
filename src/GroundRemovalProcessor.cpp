@@ -117,6 +117,23 @@ GroundRemovalResult GroundRemovalProcessor::removeGroundWithPlane(
 
     for (const auto &pt : cloud->points)
     {
+        // 計算「有符號」距離
+        float signed_d = (A*pt.x + B*pt.y + C*pt.z + D) / norm;
+
+        // 如果在平面以下（signed_d<=0） 或 在平面上方但離地面<閾值（0<signed_d<=threshold）
+        if (signed_d <= threshold)
+        {
+            ground_cloud->points.push_back(pt);  // 當地面／雜訊移除
+        }
+        else
+        {
+            cloud_out->points.push_back(pt);     // 真正高於閾值的點才保留
+        }
+    }
+    
+    /*
+    for (const auto &pt : cloud->points)
+    {
         float distance = std::fabs(A * pt.x + B * pt.y + C * pt.z + D) / norm;
         if (distance < threshold)
         {
@@ -127,6 +144,7 @@ GroundRemovalResult GroundRemovalProcessor::removeGroundWithPlane(
             cloud_out->points.push_back(pt);    // 非地面
         }
     }
+    */
 
     cloud_out->width = static_cast<uint32_t>(cloud_out->points.size());
     cloud_out->height = 1;
@@ -137,6 +155,7 @@ GroundRemovalResult GroundRemovalProcessor::removeGroundWithPlane(
     ground_cloud->is_dense = true;
 
     double elapsed = tt.toc();
+    
 
     GroundRemovalResult result;
     result.cloud = cloud_out;

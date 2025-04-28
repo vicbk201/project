@@ -279,6 +279,7 @@ int main(int argc, char **argv)
             float width  = std::fabs(obb.dimensions.y());
             float height = std::fabs(obb.dimensions.z());
 
+            
             // --- 在這裡插入 guard --------------------
             // 1) 先用 raw_height 做粗過濾：
             //    如果群組高度實在太高（例如 > 2.5m），很可能是多人大塊或嚴重雜訊，直接跳過
@@ -296,10 +297,10 @@ int main(int argc, char **argv)
             std::cout << "[DEBUG] Cluster " << clusterLabel 
                       << " OBB dimensions: length = " << length 
                       << ", width = " << width 
-                      << ", height = " << height << std::endl;
+                      << ", height = " << height << std::endl ;
+                    
 
             
-
             // 定義條件：只顯示符合單一行人或多人候選的聚類
             // 1. 計算輔助變數
             float longer  = std::max(length, width);
@@ -309,19 +310,39 @@ int main(int argc, char **argv)
 
             // 2. 單人候選：OBB不過大，且高度合理
             bool singleCandidate =
-            (length <= 1.2f && width <= 1.2f) && (height >= 0.8f && height <= 2.2f);
+            (length <= 1.0f && width <= 1.0f) && (height >= 0.8f && height <= 2.2f);
 
             // 3. 「疑似兩人」的初步篩選：邊長過大，高度仍在合理範圍
-            bool sizeLarge =((length > 1.2f && length < 3.0f) ||(width  > 1.2f && width  < 3.0f)) &&(height >= 0.8f && height <= 2.2f);
+            bool sizeLarge =((length > 1.0f && length < 3.0f) ||(width  > 1.0f && width  < 3.0f)) &&(height >= 0.8f && height <= 2.2f);
 
-            // 4. 進一步確認：  
-            //    - 長寬比要夠大（>1.5）→ 兩人並排或前後都會拉高 ratio  
-            //    - 或是橫截面面積要夠大（>1.0 m²）→ 兩人合並面積通常 >1m²
-            bool shapeOK =(aspectRatio > 1.5f) ||(area > 1.0f);
+            // 4. 最終拆分判斷
+            bool multiCandidate = sizeLarge;
 
-            // 5. 最終拆分判斷
-            bool multiCandidate = sizeLarge && shapeOK;
-    
+            /*
+            // 先計算輔助量
+            float longer  = std::max(length, width);
+            float shorter = std::min(length, width);
+            float aspectRatio = longer / shorter;   // 長寬比
+            float area        = length * width;     // 截面面積
+            bool heightOK     = (height >= 0.8f && height <= 2.2f);
+
+            // 雙閾值設定
+            const float SINGLE_MAX = 1.0f;  // ≤1.0m 幾乎肯定是單人
+            const float MULTI_MIN  = 1.2f;  // ≥1.2m 幾乎肯定是多人
+
+            // 直接判定
+            bool isMaybeSingle = (longer <= SINGLE_MAX) && heightOK;
+            bool isMaybeMulti  = (longer >= MULTI_MIN) && heightOK;
+
+            // 過渡區 1.0–1.2m，用額外條件再篩
+            bool inBetween  = (longer > SINGLE_MAX && longer < MULTI_MIN) && heightOK;
+            bool extraCheck = (aspectRatio > 1.5f) || (area > 1.0f);
+            
+            // 最終結果
+            bool singleCandidate = isMaybeSingle|| (inBetween && !extraCheck);
+            bool multiCandidate  = isMaybeMulti || (inBetween && extraCheck);
+            */
+
             if(singleCandidate)
             {
                 // ─── 只對「單人候選」做特徵提取 ─────────────────────────────────────────
@@ -387,11 +408,34 @@ int main(int argc, char **argv)
 
                 if(labelCount.size() <= 1)
                 {
+                
                    // MeanShift 沒有有效拆分出多個群組時，保留原群但不加入 OBB
                    for (auto &pt : cloudSeg->points)
                         pt.intensity = float(clusterLabel);
                     newClusterMap[clusterLabel] = cloudSeg;
                     // 可選：如果你不想顯示不合格的群組，不 push_back OBB
+
+                    /*
+                    //test跟實做用這段並註解上面
+                    // fallback：只有「點雲數 > 100」才當作行人候選補回來
+                    const size_t MIN_POINTS = 100;
+                    if (cloudSeg->points.size() > MIN_POINTS)
+                    {
+                    // 1. 標記 intensity、補回 newClusterMap
+                    for (auto &pt : cloudSeg->points)
+                         pt.intensity = float(clusterLabel);
+                    newClusterMap[clusterLabel] = cloudSeg;
+
+                    // 2. 補回 OBB 顯示
+                    validOBB.push_back(obb);
+                    validLabels.insert(clusterLabel);
+
+                    // 3. 補回特徵計算
+                    ClusterFeatures feat = FeatureExtractionProcessor::computeFeatures(cloudSeg, obb, lidarPosition);
+                    featuresList.emplace_back(thisFile, clusterLabel, feat);
+                    }
+                    */
+                           
                 }
                 else if(subLabels.size() == cloudSeg->size())
                 {
